@@ -1,0 +1,37 @@
+name: Build userScript.js
+
+# 只构建给 TizenTubeCobalt (Android/Cobalt) 用的 dist/userScript.js
+# 不涉及任何 Tizen 证书 / tizenjs / .wgt 打包，跟官方 build-release.yaml 是两回事
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mods/**'
+  workflow_dispatch: {}   # 也支持手动点击运行
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install deps
+        working-directory: mods
+        run: npm install
+
+      - name: Build userScript.js
+        working-directory: mods
+        run: npm run build
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: userScript
+          path: dist/userScript.js
