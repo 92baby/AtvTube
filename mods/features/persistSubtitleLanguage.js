@@ -1,24 +1,9 @@
-// TizenTube Subtitle Language Persistence Mod
-// Remembers the auto-translate subtitle language the user picks and
-// automatically re-applies it on every new video, across app restarts.
-//
-// This only touches the language the user picked from the
-// "auto-translate" captions menu (selectSubtitlesTrackCommand /
-// translationLanguage). It does not change caption styling, and it
-// does nothing unless the user turns on
-// Settings -> Subtitle Settings -> Remember Translated Subtitle Language.
-
+// TizenTube Subtitle Language Persistence Mod (Production Ready)
 import { configRead, configWrite, configChangeEmitter } from '../config.js';
 import resolveCommand from '../resolveCommand.js';
 
 const SELECTORS = {
     PLAYER: '.html5-video-player',
-};
-
-const EVENTS = {
-    YT_STATE_CHANGE: 'onStateChange',
-    PLAYBACK_START_EXTERNAL: 'onPlaybackStartExternal',
-    CONFIG_CHANGE: 'configChange',
 };
 
 const CONFIG_KEYS = {
@@ -27,135 +12,215 @@ const CONFIG_KEYS = {
     NAME: 'preferredSubtitleLanguageName',
 };
 
-// Re-issue the same command shape a manual menu click would produce.
-// It flows back through resolveCommand.js's own instance lookup, so it
-// behaves like the user picked the language themselves.
-//
-// Must mirror the exact command shape the real "auto-translate" menu
-// item sends (see moreSubtitles.js's createLanguageOption). A bare
-// selectSubtitlesTrackCommand only swaps the track for the current
-// player session - it does NOT get recognized by YouTube TV as an
-// explicit user choice, so the next video (or the player's own
-// deferred init on cold start) resets back to the default track.
-// openClientOverlayAction with updateAction:true is what actually
-// persists the choice into the client's internal state.
+// 视频开始后的重试延迟（ms）
+const RETRY_DELAYS_MS = [400, 1200, 2500, 4500, 7000];
+
+let isInternalApply = false;
+
+/**
+ * 递归提取 command 中的 translationLanguage (兼容嵌套结构)
+ */
+function extractTranslationCommand(cmd) {
+    if (!cmd) return null;
+    if (cmd.selectSubtitlesTrackCommand?.translationLanguage) {
+        return cmd.selectSubtitlesTrackCommand.translationLanguage;
+    }
+    if (Array.isArray(cmd.commandExecutorCommand?.commands)) {
+        for (const subCmd of cmd.commandExecutorCommand.commands) {
+            const res = extractTranslationCommand(subCmd);
+            if (res) return res;
+        }
+    }
+    return null;
+}
+
 function applyPreferredLanguage(reason) {
+    if (!configRead(CONFIG_KEYS.ENABLED)) return;
+
     const languageCode = configRead(CONFIG_KEYS.CODE);
     const languageName = configRead(CONFIG_KEYS.NAME);
-
     if (!languageCode) return;
 
     console.log(
-        `%c[TizenTube Subtitle Persistence] Applying saved language ${languageName} (${languageCode}) - ${reason}`,
+        `%c[Subtitle Persistence] Applying language: ${languageName} (${languageCode}) - ${reason}`,
         'background: #9C27B0; color: #ffffff; font-size: 12px;'
     );
 
-    resolveCommand({
-        commandExecutorCommand: {
-            commands: [
-                {
-                    selectSubtitlesTrackCommand: {
-                        translationLanguage: {
-                            languageCode,
-                            languageName
-                        }
-                    }
-                },
-                {
-                    openClientOverlayAction: {
-                        type: 'CLIENT_OVERLAY_TYPE_CAPTIONS_LANGUAGE',
-                        updateAction: true
-                    }
+    isInternalApply = true;
+
+    try {
+        resolveCommand({
+            selectSubtitlesTrackCommand: {
+                translationLanguage: {
+                    languageCode,
+                    languageName
                 }
-            ]
-        }
+            }
+        });
+    } catch (e) {
+        console.warn('[Subtitle Persistence] resolveCommand failed:', e);
+    }
+
+    Promise.resolve().then(() => {
+        isInternalApply = false;
     });
 }
 
-// Event-driven trigger, same pattern as features/preferredVideoQuality.js
-// (onStateChange + isPlaying) instead of a blind 1s poll + fixed delay.
-// autoFrameRate.js's onPlaybackStartExternal is also listened to as a
-// second, earlier-firing signal - whichever fires first applies once
-// per video.
 class SubtitlePersistenceHandler {
     #player = null;
-    #attachTimeout = null;
     #lastVideoId = null;
-    #hasAppliedForVideo = false;
-    #isPatchedForCapture = false;
+    #lastScheduledVideoId = null;
+    #retryTimers = [];
+    #isPatched = false;
 
     constructor() {
         this.init();
     }
 
     init() {
-        this.#pollForPlayer();
+        this.#startDOMCheck();
         this.#setupConfigListener();
-        this.#pollForResolveCommandCapture();
+        this.#patchResolveCommand();
     }
 
-    #pollForPlayer() {
-        clearTimeout(this.#attachTimeout);
+    #getVideoId() {
+        if (!this.#player) return null;
+        try {
+            return this.#player.getVideoData?.()?.video_id || null;
+        } catch (e) {
+            return null;
+        }
+    }
 
-        const playerElement = document.querySelector(SELECTORS.PLAYER);
+    #isPlayerPlaying() {
+        if (!this.#player) return false;
+        try {
+            return !!this.#player.getPlayerStateObject?.()?.isPlaying;
+        } catch (e) {
+            return false;
+        }
+    }
 
-        if (!playerElement) {
-            this.#attachTimeout = setTimeout(() => this.#pollForPlayer(), 100);
+    #startDOMCheck() {
+        setInterval(() => {
+            const playerElement = document.querySelector(SELECTORS.PLAYER);
+            if (playerElement && this.#player !== playerElement) {
+                if (this.#player) {
+                    try {
+                        this.#player.removeEventListener('onStateChange', this.#handleStateChange);
+                        this.#player.removeEventListener('onPlaybackStartExternal', this.#handlePlaybackStart);
+                    } catch (e) { /* ignore */ }
+                }
+                this.#player = playerElement;
+                this.#player.addEventListener('onStateChange', this.#handleStateChange);
+                this.#player.addEventListener('onPlaybackStartExternal', this.#handlePlaybackStart);
+                
+                // 首次 Attach 补漏检查
+                this.#handleStateChange();
+            }
+        }, 1500);
+    }
+
+    #clearRetryTimers() {
+        for (const id of this.#retryTimers) clearTimeout(id);
+        this.#retryTimers = [];
+    }
+
+    #scheduleRetries(reason, videoId) {
+        if (!videoId) return;
+
+        // 若当前视频已调度过重试序列，直接跳过
+        if (videoId === this.#lastScheduledVideoId && this.#retryTimers.length > 0) {
             return;
         }
 
-        if (this.#player !== playerElement) {
-            this.#player = playerElement;
-            this.#player.addEventListener(EVENTS.YT_STATE_CHANGE, this.#handleStateChange);
-            this.#player.addEventListener(EVENTS.PLAYBACK_START_EXTERNAL, this.#handleStateChange);
-            this.#handleStateChange();
-        }
+        this.#clearRetryTimers();
+        this.#lastScheduledVideoId = videoId;
+
+        RETRY_DELAYS_MS.forEach((delay, index) => {
+            const timerId = setTimeout(() => {
+                if (!configRead(CONFIG_KEYS.ENABLED)) return;
+
+                const currentVid = this.#getVideoId();
+                if (currentVid !== videoId) return;
+
+                applyPreferredLanguage(`retry +${delay}ms (${reason})`);
+
+                // 最后一轮重试跑完后，清空定时器引用数组
+                if (index === RETRY_DELAYS_MS.length - 1) {
+                    this.#retryTimers = [];
+                }
+            }, delay);
+
+            this.#retryTimers.push(timerId);
+        });
     }
 
-    #setupConfigListener() {
-        configChangeEmitter.addEventListener(EVENTS.CONFIG_CHANGE, (ev) => {
-            if (ev.detail?.key === CONFIG_KEYS.ENABLED && ev.detail?.value) {
-                // Re-apply to whatever is currently playing right now.
-                this.#hasAppliedForVideo = false;
-                applyPreferredLanguage('setting turned on');
-            }
-        });
+    #updateVideoContext(videoId) {
+        if (videoId && videoId !== this.#lastVideoId) {
+            this.#lastVideoId = videoId;
+            this.#lastScheduledVideoId = null;
+            this.#clearRetryTimers();
+        }
     }
 
     #handleStateChange = () => {
         if (!configRead(CONFIG_KEYS.ENABLED)) return;
-        if (!this.#player) return;
 
-        const videoData = this.#player?.getVideoData?.();
-        const videoId = videoData?.video_id;
+        const videoId = this.#getVideoId();
         if (!videoId) return;
 
-        if (videoId !== this.#lastVideoId) {
-            this.#lastVideoId = videoId;
-            this.#hasAppliedForVideo = false;
-        }
+        this.#updateVideoContext(videoId);
 
-        const isShorts = Object.values(this.#player.getVideoStats?.() || {}).find((a) => a === 'shortspage');
-        if (isShorts) return;
-
-        const state = this.#player?.getPlayerStateObject?.();
-        if (state?.isPlaying && !this.#hasAppliedForVideo) {
-            this.#hasAppliedForVideo = true;
-            applyPreferredLanguage('playback started');
+        if (this.#isPlayerPlaying()) {
+            this.#scheduleRetries('stateChange:isPlaying', videoId);
         }
     };
 
-    // Patch resolveCommand (independently from other mods, same pattern as
-    // moreSubtitles.js) purely to observe when the user manually picks a
-    // translated-subtitle language, so we can remember it.
-    #pollForResolveCommandCapture() {
-        const interval = setInterval(() => {
-            if (this.#isPatchedForCapture) {
-                clearInterval(interval);
+    #handlePlaybackStart = () => {
+        if (!configRead(CONFIG_KEYS.ENABLED)) return;
+
+        const videoId = this.#getVideoId();
+        if (!videoId) return;
+
+        this.#updateVideoContext(videoId);
+        this.#scheduleRetries('playbackStartExternal', videoId);
+    };
+
+    #setupConfigListener() {
+        configChangeEmitter.addEventListener('configChange', (ev) => {
+            const { key } = ev.detail || {};
+            const isEnabled = configRead(CONFIG_KEYS.ENABLED);
+
+            if (!isEnabled) {
+                this.#clearRetryTimers();
+                this.#lastScheduledVideoId = null;
                 return;
             }
 
-            if (!window._yttv) return;
+            if (
+                key === CONFIG_KEYS.ENABLED ||
+                key === CONFIG_KEYS.CODE ||
+                key === CONFIG_KEYS.NAME
+            ) {
+                this.#lastScheduledVideoId = null;
+                this.#clearRetryTimers();
+
+                const videoId = this.#getVideoId();
+                if (videoId) {
+                    if (this.#isPlayerPlaying()) {
+                        this.#scheduleRetries(`configChanged:${key}`, videoId);
+                    } else {
+                        applyPreferredLanguage(`configChanged:${key} (not playing)`);
+                    }
+                }
+            }
+        });
+    }
+
+    #patchResolveCommand() {
+        const interval = setInterval(() => {
+            if (this.#isPatched || !window._yttv) return;
 
             const yttvInstance = Object.values(window._yttv).find(
                 (obj) => obj && obj.instance && typeof obj.instance.resolveCommand === 'function'
@@ -164,47 +229,37 @@ class SubtitlePersistenceHandler {
             if (!yttvInstance) return;
 
             if (yttvInstance.instance.resolveCommand.isPatchedByPersistSubtitleLanguage) {
-                this.#isPatchedForCapture = true;
+                this.#isPatched = true;
                 clearInterval(interval);
                 return;
             }
 
             const originalResolveCommand = yttvInstance.instance.resolveCommand;
-            const self = this;
 
             yttvInstance.instance.resolveCommand = function (cmd, _) {
-                const translationLanguage = cmd?.selectSubtitlesTrackCommand?.translationLanguage;
+                const translationLanguage = extractTranslationCommand(cmd);
 
-                if (translationLanguage && configRead(CONFIG_KEYS.ENABLED)) {
+                if (translationLanguage && configRead(CONFIG_KEYS.ENABLED) && !isInternalApply) {
                     const { languageCode, languageName } = translationLanguage;
 
                     if (languageCode && languageCode !== configRead(CONFIG_KEYS.CODE)) {
                         console.log(
-                            `%c[TizenTube Subtitle Persistence] Remembering language: ${languageName} (${languageCode})`,
+                            `%c[Subtitle Persistence] User remembered language: ${languageName} (${languageCode})`,
                             'background: #9C27B0; color: #ffffff; font-size: 14px; font-weight: bold;'
                         );
-
                         configWrite(CONFIG_KEYS.CODE, languageCode);
                         configWrite(CONFIG_KEYS.NAME, languageName || languageCode);
                     }
-
-                    // The video the user just manually chose a language for
-                    // should not immediately get "corrected" again by our
-                    // own onStateChange handler.
-                    self.#hasAppliedForVideo = true;
                 }
 
                 return originalResolveCommand.apply(this, arguments);
             };
 
             yttvInstance.instance.resolveCommand.isPatchedByPersistSubtitleLanguage = true;
-            this.#isPatchedForCapture = true;
+            this.#isPatched = true;
             clearInterval(interval);
-            console.log('TizenTube Subtitle Persistence: Capture patch successful!');
         }, 500);
     }
 }
 
 window.subtitlePersistenceHandler = new SubtitlePersistenceHandler();
-
-console.log('TizenTube Subtitle Persistence: Module loaded, waiting for YouTube TV...');
