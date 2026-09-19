@@ -41,12 +41,32 @@ function applyPreferredLanguage(reason) {
         'background: #9C27B0; color: #ffffff; font-size: 12px;'
     );
 
+    // Must mirror the exact command shape the real "auto-translate" menu
+    // item sends (see moreSubtitles.js's createLanguageOption). A bare
+    // selectSubtitlesTrackCommand only swaps the track for the current
+    // player session - it does NOT get recognized by YouTube TV as an
+    // explicit user choice, so the next video (or the player's own
+    // deferred init on cold start) resets back to the default track.
+    // openClientOverlayAction with updateAction:true is what actually
+    // persists the choice into the client's internal state.
     resolveCommand({
-        selectSubtitlesTrackCommand: {
-            translationLanguage: {
-                languageCode,
-                languageName
-            }
+        commandExecutorCommand: {
+            commands: [
+                {
+                    selectSubtitlesTrackCommand: {
+                        translationLanguage: {
+                            languageCode,
+                            languageName
+                        }
+                    }
+                },
+                {
+                    openClientOverlayAction: {
+                        type: 'CLIENT_OVERLAY_TYPE_CAPTIONS_LANGUAGE',
+                        updateAction: true
+                    }
+                }
+            ]
         }
     });
 }
