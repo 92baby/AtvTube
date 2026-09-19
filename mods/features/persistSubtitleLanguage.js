@@ -1,4 +1,8 @@
 // TizenTube Subtitle Language Persistence Mod (Production Ready)
+// Applies the same command shape as a manual pick in the auto-translate menu
+// (see moreSubtitles.js createLanguageOption), so Cobalt/YouTube TV selects
+// auto-translate rather than leaving auto-generated English.
+
 import { configRead, configWrite, configChangeEmitter } from '../config.js';
 import resolveCommand from '../resolveCommand.js';
 
@@ -12,13 +16,13 @@ const CONFIG_KEYS = {
     NAME: 'preferredSubtitleLanguageName',
 };
 
-// 视频开始后的重试延迟（ms）
-const RETRY_DELAYS_MS = [400, 1200, 2500, 4500, 7000];
+// Retries after playback starts — YouTube TV often overrides captions late.
+const RETRY_DELAYS_MS = [400, 1200, 2500, 4500, 7000, 10000];
 
 let isInternalApply = false;
 
 /**
- * 递归提取 command 中的 translationLanguage (兼容嵌套结构)
+ * Recursively find translationLanguage in nested resolveCommand payloads.
  */
 function extractTranslationCommand(cmd) {
     if (!cmd) return null;
@@ -34,6 +38,33 @@ function extractTranslationCommand(cmd) {
     return null;
 }
 
+/**
+ * Build the same command a menu click uses (moreSubtitles.createLanguageOption),
+ * without POPUP_BACK (no open popup when applying in background).
+ */
+function buildTranslateCommand(languageCode, languageName) {
+    return {
+        commandExecutorCommand: {
+            commands: [
+                {
+                    selectSubtitlesTrackCommand: {
+                        translationLanguage: {
+                            languageCode,
+                            languageName,
+                        },
+                    },
+                },
+                {
+                    openClientOverlayAction: {
+                        type: 'CLIENT_OVERLAY_TYPE_CAPTIONS_LANGUAGE',
+                        updateAction: true,
+                    },
+                },
+            ],
+        },
+    };
+}
+
 function applyPreferredLanguage(reason) {
     if (!configRead(CONFIG_KEYS.ENABLED)) return;
 
@@ -47,15 +78,18 @@ function applyPreferredLanguage(reason) {
     );
 
     isInternalApply = true;
-
     try {
+        // Primary: menu-identical shape (required for auto-translate on Cobalt).
+        resolveCommand(buildTranslateCommand(languageCode, languageName));
+
+        // Fallback: bare command some builds still honor.
         resolveCommand({
             selectSubtitlesTrackCommand: {
                 translationLanguage: {
                     languageCode,
-                    languageName
-                }
-            }
+                    languageName,
+                },
+            },
         });
     } catch (e) {
         console.warn('[Subtitle Persistence] resolveCommand failed:', e);
@@ -108,14 +142,20 @@ class SubtitlePersistenceHandler {
                 if (this.#player) {
                     try {
                         this.#player.removeEventListener('onStateChange', this.#handleStateChange);
-                        this.#player.removeEventListener('onPlaybackStartExternal', this.#handlePlaybackStart);
-                    } catch (e) { /* ignore */ }
+                        this.#player.removeEventListener(
+                            'onPlaybackStartExternal',
+                            this.#handlePlaybackStart
+                        );
+                    } catch (e) {
+                        /* ignore */
+                    }
                 }
                 this.#player = playerElement;
                 this.#player.addEventListener('onStateChange', this.#handleStateChange);
-                this.#player.addEventListener('onPlaybackStartExternal', this.#handlePlaybackStart);
-                
-                // 首次 Attach 补漏检查
+                this.#player.addEventListener(
+                    'onPlaybackStartExternal',
+                    this.#handlePlaybackStart
+                );
                 this.#handleStateChange();
             }
         }, 1500);
@@ -128,8 +168,6 @@ class SubtitlePersistenceHandler {
 
     #scheduleRetries(reason, videoId) {
         if (!videoId) return;
-
-        // 若当前视频已调度过重试序列，直接跳过
         if (videoId === this.#lastScheduledVideoId && this.#retryTimers.length > 0) {
             return;
         }
@@ -140,18 +178,14 @@ class SubtitlePersistenceHandler {
         RETRY_DELAYS_MS.forEach((delay, index) => {
             const timerId = setTimeout(() => {
                 if (!configRead(CONFIG_KEYS.ENABLED)) return;
-
-                const currentVid = this.#getVideoId();
-                if (currentVid !== videoId) return;
+                if (this.#getVideoId() !== videoId) return;
 
                 applyPreferredLanguage(`retry +${delay}ms (${reason})`);
 
-                // 最后一轮重试跑完后，清空定时器引用数组
                 if (index === RETRY_DELAYS_MS.length - 1) {
                     this.#retryTimers = [];
                 }
             }, delay);
-
             this.#retryTimers.push(timerId);
         });
     }
@@ -166,12 +200,10 @@ class SubtitlePersistenceHandler {
 
     #handleStateChange = () => {
         if (!configRead(CONFIG_KEYS.ENABLED)) return;
-
         const videoId = this.#getVideoId();
         if (!videoId) return;
 
         this.#updateVideoContext(videoId);
-
         if (this.#isPlayerPlaying()) {
             this.#scheduleRetries('stateChange:isPlaying', videoId);
         }
@@ -179,7 +211,6 @@ class SubtitlePersistenceHandler {
 
     #handlePlaybackStart = () => {
         if (!configRead(CONFIG_KEYS.ENABLED)) return;
-
         const videoId = this.#getVideoId();
         if (!videoId) return;
 
@@ -205,7 +236,6 @@ class SubtitlePersistenceHandler {
             ) {
                 this.#lastScheduledVideoId = null;
                 this.#clearRetryTimers();
-
                 const videoId = this.#getVideoId();
                 if (videoId) {
                     if (this.#isPlayerPlaying()) {
@@ -223,9 +253,9 @@ class SubtitlePersistenceHandler {
             if (this.#isPatched || !window._yttv) return;
 
             const yttvInstance = Object.values(window._yttv).find(
-                (obj) => obj && obj.instance && typeof obj.instance.resolveCommand === 'function'
+                (obj) =>
+                    obj && obj.instance && typeof obj.instance.resolveCommand === 'function'
             );
-
             if (!yttvInstance) return;
 
             if (yttvInstance.instance.resolveCommand.isPatchedByPersistSubtitleLanguage) {
@@ -239,9 +269,12 @@ class SubtitlePersistenceHandler {
             yttvInstance.instance.resolveCommand = function (cmd, _) {
                 const translationLanguage = extractTranslationCommand(cmd);
 
-                if (translationLanguage && configRead(CONFIG_KEYS.ENABLED) && !isInternalApply) {
+                if (
+                    translationLanguage &&
+                    configRead(CONFIG_KEYS.ENABLED) &&
+                    !isInternalApply
+                ) {
                     const { languageCode, languageName } = translationLanguage;
-
                     if (languageCode && languageCode !== configRead(CONFIG_KEYS.CODE)) {
                         console.log(
                             `%c[Subtitle Persistence] User remembered language: ${languageName} (${languageCode})`,
