@@ -33,6 +33,8 @@ const defaultConfig = {
   enablePersistSubtitleLanguage: false,
   preferredSubtitleLanguageCode: null,
   preferredSubtitleLanguageName: null,
+  // channelId (UCxxxx) -> { languageCode, languageName }
+  preferredSubtitleByChannel: {},
   showWelcomeToast: true,
   enablePreviousNextButtons: true,
   enableSuperThanksButton: false,
