@@ -68,7 +68,8 @@
                 "title": "Subtitle Settings",
                 "options": {
                     "showLocalSubtitle": "Show Local Subtitle",
-                    "showHiddenSubtitles": "Show Hidden Subtitles"
+                    "showHiddenSubtitles": "Show Hidden Subtitles",
+                    "persistSubtitleLanguage": "Remember Translated Subtitle Language"
                 }
             },
             "videoPlayer": {
