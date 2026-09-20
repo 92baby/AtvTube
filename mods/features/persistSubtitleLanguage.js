@@ -1,3 +1,17 @@
+// TizenTube Subtitle Language Persistence + TV Diagnostics
+//
+// Features:
+// 1. Remember auto-translation subtitle language.
+// 2. Display diagnostic logs directly on the TV screen.
+// 3. Observe player events and subtitle commands.
+// 4. Do not block or modify YouTube TV commands.
+// 5. Do not automatically re-apply after non-translation commands.
+//
+// Diagnostic panel:
+// - Visible on TV screen.
+// - Maximum 35 log lines.
+// - Click/tap the panel to clear logs.
+// - Set SHOW_DIAGNOSTICS = false to disable the panel.
 
 import { configRead, configWrite, configChangeEmitter } from '../config.js';
 import resolveCommand from '../resolveCommand.js';
@@ -12,21 +26,131 @@ const CONFIG_KEYS = {
     NAME: 'preferredSubtitleLanguageName',
 };
 
-// Limited retries after playback becomes active.
-// Avoid repeatedly overriding the user's subtitle state.
-const RETRY_DELAYS_MS = [1000, 2500];
+// =========================
+// Diagnostic configuration
+// =========================
 
-// Prevent duplicate applications within a short interval.
-const MIN_APPLY_INTERVAL_MS = 800;
+const SHOW_DIAGNOSTICS = true;
+const MAX_LOG_LINES = 35;
+const PANEL_ID = 'subtitle-persistence-debug-panel';
 
 let isInternalApply = false;
-let lastApplyTime = 0;
+let debugPanel = null;
+let debugLines = [];
 
+// =========================
+// TV visible diagnostics
+// =========================
 
-/**
- * Recursively extract translationLanguage from a command tree.
- * Supports nested commandExecutorCommand.commands.
- */
+function getTimeString() {
+    const now = new Date();
+
+    return now.toLocaleTimeString('en-GB', {
+        hour12: false,
+        fractionalSecondDigits: 3,
+    });
+}
+
+function safeString(value, maxLength = 500) {
+    try {
+        if (value === undefined) return 'undefined';
+        if (value === null) return 'null';
+
+        const text = typeof value === 'string'
+            ? value
+            : JSON.stringify(value);
+
+        if (!text) return '';
+
+        return text.length > maxLength
+            ? text.substring(0, maxLength) + '...'
+            : text;
+    } catch (e) {
+        return '[unserializable]';
+    }
+}
+
+function ensureDebugPanel() {
+    if (!SHOW_DIAGNOSTICS) return null;
+
+    if (debugPanel && document.body.contains(debugPanel)) {
+        return debugPanel;
+    }
+
+    debugPanel = document.getElementById(PANEL_ID);
+
+    if (!debugPanel) {
+        debugPanel = document.createElement('div');
+        debugPanel.id = PANEL_ID;
+
+        debugPanel.style.position = 'fixed';
+        debugPanel.style.top = '20px';
+        debugPanel.style.right = '20px';
+        debugPanel.style.width = '620px';
+        debugPanel.style.maxWidth = '90vw';
+        debugPanel.style.maxHeight = '45vh';
+        debugPanel.style.overflow = 'hidden';
+        debugPanel.style.zIndex = '2147483647';
+
+        debugPanel.style.background = 'rgba(0, 0, 0, 0.88)';
+        debugPanel.style.color = '#00ff66';
+        debugPanel.style.border = '2px solid #00ff66';
+        debugPanel.style.borderRadius = '6px';
+
+        debugPanel.style.padding = '10px';
+        debugPanel.style.fontFamily = 'monospace';
+        debugPanel.style.fontSize = '14px';
+        debugPanel.style.lineHeight = '1.35';
+        debugPanel.style.whiteSpace = 'pre-wrap';
+        debugPanel.style.overflowWrap = 'anywhere';
+
+        debugPanel.style.pointerEvents = 'auto';
+
+        debugPanel.title = 'Click to clear subtitle diagnostics';
+
+        debugPanel.addEventListener('click', () => {
+            debugLines = [];
+            renderDebugPanel();
+        });
+
+        document.body.appendChild(debugPanel);
+    }
+
+    return debugPanel;
+}
+
+function renderDebugPanel() {
+    if (!SHOW_DIAGNOSTICS) return;
+
+    const panel = ensureDebugPanel();
+    if (!panel) return;
+
+    panel.textContent = debugLines.join('\n');
+}
+
+function debugLog(eventName, details = '') {
+    const line = `[${getTimeString()}] ${eventName}` +
+        (details ? ` | ${details}` : '');
+
+    debugLines.push(line);
+
+    if (debugLines.length > MAX_LOG_LINES) {
+        debugLines.splice(0, debugLines.length - MAX_LOG_LINES);
+    }
+
+    console.log('[Subtitle Persistence]', line);
+
+    renderDebugPanel();
+}
+
+function debugWarn(eventName, details = '') {
+    debugLog(`WARN: ${eventName}`, details);
+}
+
+// =========================
+// Command inspection
+// =========================
+
 function extractTranslationCommand(cmd) {
     if (!cmd) return null;
 
@@ -36,22 +160,23 @@ function extractTranslationCommand(cmd) {
 
     if (Array.isArray(cmd.commandExecutorCommand?.commands)) {
         for (const subCmd of cmd.commandExecutorCommand.commands) {
-            const res = extractTranslationCommand(subCmd);
-            if (res) return res;
+            const result = extractTranslationCommand(subCmd);
+
+            if (result) {
+                return result;
+            }
         }
     }
 
     return null;
 }
 
-
-/**
- * Check whether a command contains a subtitle track selection.
- */
 function hasSelectSubtitlesTrackCommand(cmd) {
     if (!cmd) return false;
 
-    if (cmd.selectSubtitlesTrackCommand) return true;
+    if (cmd.selectSubtitlesTrackCommand) {
+        return true;
+    }
 
     if (Array.isArray(cmd.commandExecutorCommand?.commands)) {
         return cmd.commandExecutorCommand.commands.some(
@@ -62,414 +187,604 @@ function hasSelectSubtitlesTrackCommand(cmd) {
     return false;
 }
 
+function getSubtitleCommandSummary(cmd) {
+    const translationLanguage = extractTranslationCommand(cmd);
 
-/**
- * Apply the remembered translation language.
- *
- * Important:
- * - Does not call player.setOption().
- * - Does not explicitly enable CC.
- * - Only sends the translation-language selection command.
- */
+    const result = {
+        hasSubtitleCommand: hasSelectSubtitlesTrackCommand(cmd),
+        translationLanguage: translationLanguage || null,
+        command: cmd,
+    };
+
+    return result;
+}
+
+function logSubtitleCommand(source, cmd) {
+    const summary = getSubtitleCommandSummary(cmd);
+
+    if (!summary.hasSubtitleCommand) {
+        return;
+    }
+
+    const translation = summary.translationLanguage;
+
+    if (translation) {
+        debugLog(
+            `${source}: translation command`,
+            `code=${translation.languageCode || 'none'}, ` +
+            `name=${translation.languageName || 'none'}, ` +
+            `internal=${isInternalApply}`
+        );
+    } else {
+        debugLog(
+            `${source}: non-translation command`,
+            `internal=${isInternalApply}`
+        );
+    }
+
+    // For detailed investigation, print the command structure
+    // in the browser console as well.
+    console.log('[Subtitle Debug] Full subtitle command:', cmd);
+}
+
+// =========================
+// Player API diagnostics
+// =========================
+
+function tryPlayerSetOption(languageCode, languageName) {
+    const player = document.querySelector(SELECTORS.PLAYER);
+
+    if (!player || typeof player.setOption !== 'function') {
+        debugWarn(
+            'setOption unavailable',
+            'player or setOption is missing'
+        );
+
+        return false;
+    }
+
+    try {
+        if (typeof player.loadModule === 'function') {
+            debugLog('captions.loadModule', 'called');
+
+            try {
+                player.loadModule('captions');
+
+                debugLog('captions.loadModule', 'returned');
+            } catch (error) {
+                debugWarn(
+                    'captions.loadModule',
+                    safeString(error)
+                );
+            }
+        }
+
+        const translatedTrack = {
+            languageCode,
+            translationLanguage: {
+                languageCode,
+                languageName: languageName || languageCode,
+            },
+        };
+
+        debugLog(
+            'captions.setOption',
+            safeString(translatedTrack)
+        );
+
+        try {
+            player.setOption(
+                'captions',
+                'track',
+                translatedTrack
+            );
+
+            debugLog(
+                'captions.setOption',
+                'translation payload returned'
+            );
+
+            return true;
+        } catch (error) {
+            debugWarn(
+                'captions.setOption translation failed',
+                safeString(error)
+            );
+        }
+
+        const normalTrack = {
+            languageCode,
+        };
+
+        debugLog(
+            'captions.setOption fallback',
+            safeString(normalTrack)
+        );
+
+        try {
+            player.setOption(
+                'captions',
+                'track',
+                normalTrack
+            );
+
+            debugLog(
+                'captions.setOption',
+                'normal payload returned'
+            );
+
+            return true;
+        } catch (error) {
+            debugWarn(
+                'captions.setOption fallback failed',
+                safeString(error)
+            );
+
+            return false;
+        }
+    } catch (error) {
+        debugWarn(
+            'setOption outer exception',
+            safeString(error)
+        );
+
+        return false;
+    }
+}
+
+// =========================
+// Apply remembered language
+// =========================
+
 function applyPreferredLanguage(reason) {
-    if (!configRead(CONFIG_KEYS.ENABLED)) return;
+    if (!configRead(CONFIG_KEYS.ENABLED)) {
+        debugLog('apply skipped', 'feature disabled');
+        return;
+    }
 
     const languageCode = configRead(CONFIG_KEYS.CODE);
     const languageName = configRead(CONFIG_KEYS.NAME);
 
-    if (!languageCode) return;
-
-    const now = Date.now();
-
-    // Avoid duplicate applications in a short interval.
-    if (now - lastApplyTime < MIN_APPLY_INTERVAL_MS) {
+    if (!languageCode) {
+        debugLog('apply skipped', 'no remembered language');
         return;
     }
 
-    lastApplyTime = now;
-
-    console.log(
-        `%c[Subtitle Persistence] Applying: ${languageName || languageCode} (${languageCode}) - ${reason}`,
-        'background: #9C27B0; color: #ffffff; font-size: 12px;'
+    debugLog(
+        'APPLY START',
+        `language=${languageName || languageCode}, ` +
+        `code=${languageCode}, reason=${reason}`
     );
 
     isInternalApply = true;
 
     try {
-        resolveCommand({
+        tryPlayerSetOption(languageCode, languageName);
+
+        const command = {
             selectSubtitlesTrackCommand: {
                 translationLanguage: {
                     languageCode,
                     languageName: languageName || languageCode,
                 },
             },
-        });
-    } catch (e) {
-        console.warn(
-            '[Subtitle Persistence] Apply failed:',
-            e
+        };
+
+        debugLog(
+            'resolveCommand internal',
+            safeString(command)
+        );
+
+        resolveCommand(command);
+
+        debugLog('APPLY END', 'resolveCommand returned');
+    } catch (error) {
+        debugWarn(
+            'applyPreferredLanguage failed',
+            safeString(error)
         );
     }
 
-    // Clear flag on the next microtask.
     Promise.resolve().then(() => {
         isInternalApply = false;
+
+        debugLog(
+            'internal flag cleared',
+            'isInternalApply=false'
+        );
     });
 }
 
+// =========================
+// Main handler
+// =========================
 
 class SubtitlePersistenceHandler {
     #player = null;
     #lastVideoId = null;
-    #lastScheduledVideoId = null;
-    #retryTimers = [];
     #isPatched = false;
 
     constructor() {
+        debugLog('handler', 'created');
+
         this.init();
     }
 
-
     init() {
+        debugLog('handler', 'initializing');
+
         this.#startDOMCheck();
         this.#setupConfigListener();
         this.#patchResolveCommand();
     }
-
 
     #getVideoId() {
         if (!this.#player) return null;
 
         try {
             return this.#player.getVideoData?.()?.video_id || null;
-        } catch (e) {
+        } catch (error) {
+            debugWarn(
+                'getVideoId failed',
+                safeString(error)
+            );
+
             return null;
         }
     }
 
+    #getPlayerState() {
+        if (!this.#player) {
+            return 'no-player';
+        }
+
+        try {
+            const stateObject =
+                this.#player.getPlayerStateObject?.();
+
+            if (stateObject) {
+                return safeString(stateObject, 250);
+            }
+
+            return String(
+                this.#player.getPlayerState?.()
+            );
+        } catch (error) {
+            return `state-error:${safeString(error, 150)}`;
+        }
+    }
 
     #isPlayerPlaying() {
         if (!this.#player) return false;
 
         try {
-            const stateObj = this.#player.getPlayerStateObject?.();
+            const stateObject =
+                this.#player.getPlayerStateObject?.();
 
-            if (stateObj && typeof stateObj.isPlaying === 'boolean') {
-                return stateObj.isPlaying;
+            if (
+                stateObject &&
+                typeof stateObject.isPlaying === 'boolean'
+            ) {
+                return stateObject.isPlaying;
             }
 
-            // Fallback: numeric state 1 = playing.
-            const state = this.#player.getPlayerState?.();
-
-            return state === 1;
-        } catch (e) {
+            return this.#player.getPlayerState?.() === 1;
+        } catch (error) {
             return false;
         }
     }
 
+    #updateVideoContext() {
+        const videoId = this.#getVideoId();
+
+        if (videoId !== this.#lastVideoId) {
+            debugLog(
+                'VIDEO CHANGE',
+                `old=${this.#lastVideoId || 'none'}, ` +
+                `new=${videoId || 'none'}`
+            );
+
+            this.#lastVideoId = videoId;
+        }
+
+        return videoId;
+    }
 
     #startDOMCheck() {
         setInterval(() => {
-            const playerElement = document.querySelector(
-                SELECTORS.PLAYER
-            );
+            const playerElement =
+                document.querySelector(SELECTORS.PLAYER);
 
-            if (playerElement && this.#player !== playerElement) {
-                if (this.#player) {
-                    try {
-                        this.#player.removeEventListener(
-                            'onStateChange',
-                            this.#handleStateChange
-                        );
+            if (!playerElement) {
+                return;
+            }
 
-                        this.#player.removeEventListener(
-                            'onPlaybackStartExternal',
-                            this.#handlePlaybackStart
-                        );
+            if (this.#player === playerElement) {
+                return;
+            }
 
-                        this.#player.removeEventListener(
-                            'onApiChange',
-                            this.#handleApiChange
-                        );
-                    } catch (e) {
-                        // Ignore listener cleanup errors.
-                    }
-                }
-
-                this.#player = playerElement;
+            if (this.#player) {
+                debugLog(
+                    'PLAYER CHANGE',
+                    'removing old event listeners'
+                );
 
                 try {
-                    this.#player.addEventListener(
+                    this.#player.removeEventListener(
                         'onStateChange',
                         this.#handleStateChange
                     );
 
-                    this.#player.addEventListener(
+                    this.#player.removeEventListener(
                         'onPlaybackStartExternal',
                         this.#handlePlaybackStart
                     );
 
-                    this.#player.addEventListener(
+                    this.#player.removeEventListener(
                         'onApiChange',
                         this.#handleApiChange
                     );
-                } catch (e) {
-                    // Ignore listener registration errors.
+                } catch (error) {
+                    debugWarn(
+                        'removeEventListener failed',
+                        safeString(error)
+                    );
                 }
-
-                // Catch up if the player already exists and is playing.
-                this.#handleStateChange();
             }
+
+            this.#player = playerElement;
+
+            debugLog(
+                'PLAYER FOUND',
+                `video=${this.#getVideoId() || 'none'}`
+            );
+
+            try {
+                this.#player.addEventListener(
+                    'onStateChange',
+                    this.#handleStateChange
+                );
+
+                this.#player.addEventListener(
+                    'onPlaybackStartExternal',
+                    this.#handlePlaybackStart
+                );
+
+                this.#player.addEventListener(
+                    'onApiChange',
+                    this.#handleApiChange
+                );
+
+                debugLog(
+                    'PLAYER EVENTS',
+                    'listeners registered'
+                );
+            } catch (error) {
+                debugWarn(
+                    'addEventListener failed',
+                    safeString(error)
+                );
+            }
+
+            this.#handleStateChange();
         }, 1500);
     }
 
+    #handleStateChange = () => {
+        const videoId = this.#updateVideoContext();
 
-    #clearRetryTimers() {
-        for (const id of this.#retryTimers) {
-            clearTimeout(id);
-        }
+        debugLog(
+            'EVENT onStateChange',
+            `video=${videoId || 'none'}, ` +
+            `playing=${this.#isPlayerPlaying()}, ` +
+            `state=${this.#getPlayerState()}`
+        );
+    };
 
-        this.#retryTimers = [];
-    }
+    #handlePlaybackStart = () => {
+        const videoId = this.#updateVideoContext();
 
+        debugLog(
+            'EVENT onPlaybackStartExternal',
+            `video=${videoId || 'none'}, ` +
+            `playing=${this.#isPlayerPlaying()}`
+        );
+    };
 
-    #scheduleRetries(reason, videoId) {
-        if (!videoId) return;
-        if (!configRead(CONFIG_KEYS.ENABLED)) return;
-        if (!configRead(CONFIG_KEYS.CODE)) return;
+    #handleApiChange = () => {
+        const videoId = this.#updateVideoContext();
 
-        // Already scheduled a retry sequence for this video.
-        if (
-            videoId === this.#lastScheduledVideoId &&
-            this.#retryTimers.length > 0
-        ) {
+        debugLog(
+            'EVENT onApiChange',
+            `video=${videoId || 'none'}`
+        );
+
+        if (!this.#player) {
             return;
         }
 
-        this.#clearRetryTimers();
-        this.#lastScheduledVideoId = videoId;
+        try {
+            const captionsModule =
+                this.#player.getOptions?.('captions');
 
-        RETRY_DELAYS_MS.forEach((delay, index) => {
-            const timerId = setTimeout(() => {
-                if (!configRead(CONFIG_KEYS.ENABLED)) return;
-
-                const currentVid = this.#getVideoId();
-
-                // Do not apply to another video.
-                if (currentVid !== videoId) return;
-
-                applyPreferredLanguage(
-                    `retry +${delay}ms (${reason})`
-                );
-
-                if (index === RETRY_DELAYS_MS.length - 1) {
-                    this.#retryTimers = [];
-                }
-            }, delay);
-
-            this.#retryTimers.push(timerId);
-        });
-    }
-
-
-    #updateVideoContext(videoId) {
-        if (videoId && videoId !== this.#lastVideoId) {
-            this.#lastVideoId = videoId;
-            this.#lastScheduledVideoId = null;
-
-            this.#clearRetryTimers();
-        }
-    }
-
-
-    #handleStateChange = () => {
-        if (!configRead(CONFIG_KEYS.ENABLED)) return;
-
-        const videoId = this.#getVideoId();
-
-        if (!videoId) return;
-
-        this.#updateVideoContext(videoId);
-
-        if (this.#isPlayerPlaying()) {
-            this.#scheduleRetries(
-                'stateChange:isPlaying',
-                videoId
+            debugLog(
+                'captions options',
+                safeString(captionsModule, 350)
+            );
+        } catch (error) {
+            debugWarn(
+                'getOptions captions failed',
+                safeString(error)
             );
         }
     };
 
-
-    #handlePlaybackStart = () => {
-        if (!configRead(CONFIG_KEYS.ENABLED)) return;
-
-        const videoId = this.#getVideoId();
-
-        if (!videoId) return;
-
-        this.#updateVideoContext(videoId);
-
-        this.#scheduleRetries(
-            'playbackStartExternal',
-            videoId
-        );
-    };
-
-
-    #handleApiChange = () => {
-        if (!configRead(CONFIG_KEYS.ENABLED)) return;
-        if (!configRead(CONFIG_KEYS.CODE)) return;
-
-        const videoId = this.#getVideoId();
-
-        if (!videoId) return;
-
-        this.#updateVideoContext(videoId);
-
-        // Apply once when the API changes.
-        // No explicit CC enabling.
-        applyPreferredLanguage('onApiChange');
-    };
-
-
     #setupConfigListener() {
         configChangeEmitter.addEventListener(
             'configChange',
-            (ev) => {
-                const { key } = ev.detail || {};
-                const isEnabled = configRead(CONFIG_KEYS.ENABLED);
+            (event) => {
+                const detail = event.detail || {};
+                const key = detail.key;
 
-                if (!isEnabled) {
-                    this.#clearRetryTimers();
-                    this.#lastScheduledVideoId = null;
-                    return;
-                }
+                debugLog(
+                    'CONFIG CHANGE',
+                    `key=${key || 'unknown'}`
+                );
 
                 if (
                     key === CONFIG_KEYS.ENABLED ||
                     key === CONFIG_KEYS.CODE ||
                     key === CONFIG_KEYS.NAME
                 ) {
-                    this.#lastScheduledVideoId = null;
+                    debugLog(
+                        'CONFIG VALUES',
+                        `enabled=${configRead(CONFIG_KEYS.ENABLED)}, ` +
+                        `code=${configRead(CONFIG_KEYS.CODE) || 'none'}, ` +
+                        `name=${configRead(CONFIG_KEYS.NAME) || 'none'}`
+                    );
 
-                    this.#clearRetryTimers();
-
-                    const videoId = this.#getVideoId();
-
-                    if (videoId) {
-                        if (this.#isPlayerPlaying()) {
-                            this.#scheduleRetries(
-                                `configChanged:${key}`,
-                                videoId
-                            );
-                        } else {
-                            applyPreferredLanguage(
-                                `configChanged:${key} (not playing)`
-                            );
-                        }
+                    if (configRead(CONFIG_KEYS.ENABLED)) {
+                        applyPreferredLanguage(
+                            `configChange:${key}`
+                        );
                     }
                 }
             }
         );
     }
 
-
     #patchResolveCommand() {
         const interval = setInterval(() => {
-            if (this.#isPatched || !window._yttv) return;
+            if (this.#isPatched || !window._yttv) {
+                return;
+            }
 
-            const yttvInstance = Object.values(window._yttv).find(
+            const yttvEntry = Object.values(window._yttv).find(
                 (obj) =>
                     obj &&
                     obj.instance &&
                     typeof obj.instance.resolveCommand === 'function'
             );
 
-            if (!yttvInstance) return;
+            if (!yttvEntry) {
+                return;
+            }
+
+            const instance = yttvEntry.instance;
 
             if (
-                yttvInstance.instance.resolveCommand
+                instance.resolveCommand
                     .isPatchedByPersistSubtitleLanguage
             ) {
                 this.#isPatched = true;
                 clearInterval(interval);
+
+                debugLog(
+                    'resolveCommand',
+                    'already patched'
+                );
+
                 return;
             }
 
             const originalResolveCommand =
-                yttvInstance.instance.resolveCommand;
+                instance.resolveCommand;
 
             const self = this;
 
-            yttvInstance.instance.resolveCommand = function (cmd, _) {
-                if (
-                    configRead(CONFIG_KEYS.ENABLED) &&
-                    hasSelectSubtitlesTrackCommand(cmd)
-                ) {
-                    const translationLanguage =
-                        extractTranslationCommand(cmd);
-
-                    // Only remember the user's explicitly selected
-                    // translation language.
-                    //
-                    // Non-translation commands are not reapplied.
-                    // This prevents the script from fighting with:
-                    // - CC off
-                    // - local subtitle selection
-                    // - auto-generated subtitle selection
-
-                    if (
-                        translationLanguage &&
-                        !isInternalApply
-                    ) {
-                        const {
-                            languageCode,
-                            languageName
-                        } = translationLanguage;
+            instance.resolveCommand = function (cmd, _) {
+                try {
+                    if (hasSelectSubtitlesTrackCommand(cmd)) {
+                        logSubtitleCommand(
+                            'resolveCommand',
+                            cmd
+                        );
 
                         if (
-                            languageCode &&
-                            languageCode !==
-                                configRead(CONFIG_KEYS.CODE)
+                            configRead(CONFIG_KEYS.ENABLED) &&
+                            !isInternalApply
                         ) {
-                            console.log(
-                                `%c[Subtitle Persistence] User remembered language: ${languageName} (${languageCode})`,
-                                'background: #9C27B0; color: #ffffff; font-size: 14px; font-weight: bold;'
-                            );
+                            const translationLanguage =
+                                extractTranslationCommand(cmd);
 
-                            configWrite(
-                                CONFIG_KEYS.CODE,
-                                languageCode
-                            );
+                            if (translationLanguage) {
+                                const languageCode =
+                                    translationLanguage.languageCode;
 
-                            configWrite(
-                                CONFIG_KEYS.NAME,
-                                languageName || languageCode
-                            );
+                                const languageName =
+                                    translationLanguage.languageName ||
+                                    languageCode;
+
+                                if (languageCode) {
+                                    debugLog(
+                                        'REMEMBER LANGUAGE',
+                                        `code=${languageCode}, ` +
+                                        `name=${languageName}`
+                                    );
+
+                                    configWrite(
+                                        CONFIG_KEYS.CODE,
+                                        languageCode
+                                    );
+
+                                    configWrite(
+                                        CONFIG_KEYS.NAME,
+                                        languageName
+                                    );
+                                }
+                            } else {
+                                debugLog(
+                                    'NON-TRANSLATION COMMAND',
+                                    'not automatically reapplied'
+                                );
+                            }
                         }
                     }
+                } catch (error) {
+                    debugWarn(
+                        'resolveCommand diagnostic failed',
+                        safeString(error)
+                    );
                 }
 
+                // Always allow the original YouTube TV command.
                 return originalResolveCommand.apply(
                     this,
                     arguments
                 );
             };
 
-            yttvInstance.instance.resolveCommand
+            instance.resolveCommand
                 .isPatchedByPersistSubtitleLanguage = true;
 
-            self.#isPatched = true;
-
+            this.#isPatched = true;
             clearInterval(interval);
 
-            console.log(
-                '[Subtitle Persistence] resolveCommand patch OK'
+            debugLog(
+                'PATCH READY',
+                'resolveCommand patch installed'
             );
         }, 500);
     }
 }
 
+// =========================
+// Startup
+// =========================
 
-window.subtitlePersistenceHandler =
-    new SubtitlePersistenceHandler();
+try {
+    ensureDebugPanel();
+
+    debugLog(
+        'STARTUP',
+        'subtitle persistence diagnostics enabled'
+    );
+
+    window.subtitlePersistenceHandler =
+        new SubtitlePersistenceHandler();
+} catch (error) {
+    console.error(
+        '[Subtitle Persistence] startup failed:',
+        error
+    );
+}
