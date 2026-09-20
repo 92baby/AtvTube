@@ -37,11 +37,21 @@ const CONFIG_KEYS = {
     NAME: 'preferredSubtitleLanguageName',
 };
 
-// Original retry schedule.
-const RETRY_DELAYS_MS = [300, 900, 1800, 3500];
+// Delay before each successive attempt, if the previous one
+// did not verify as applied. Attempts are now serialized:
+// apply -> wait -> verify -> (stop | next attempt).
+const ATTEMPT_DELAYS_MS = [300, 900, 1800, 3500];
 
-// Original maximum number of re-applies after player reset.
-const MAX_RESET_REAPPLY = 3;
+// How long to wait after an apply before checking whether the
+// track actually landed on the desired language.
+const VERIFY_DELAY_MS = 1200;
+
+const REQUEST_STATUS = {
+    IDLE: 'idle',
+    PENDING: 'pending',
+    CONFIRMED: 'confirmed',
+    EXHAUSTED: 'exhausted',
+};
 
 // Debug settings.
 const SHOW_DIAGNOSTICS = true;
@@ -513,6 +523,54 @@ function tryPlayerSetOption(languageCode, languageName, applyId) {
 }
 
 
+function getCurrentCaptionsTrackInfo(player) {
+    if (!player || typeof player.getOption !== 'function') {
+        return { available: false };
+    }
+
+    try {
+        const track = player.getOption('captions', 'track');
+
+        const languageCode =
+            track?.translationLanguage?.languageCode ||
+            track?.languageCode ||
+            null;
+
+        return {
+            available: true,
+            raw: track,
+            languageCode,
+        };
+    } catch (e) {
+        return {
+            available: false,
+            error: e?.message || e,
+        };
+    }
+}
+
+function isTrackOnDesiredLanguage(player, desiredCode) {
+    const info = getCurrentCaptionsTrackInfo(player);
+
+    debugLog(
+        'VERIFY captions track read',
+        {
+            desiredCode,
+            info,
+        }
+    );
+
+    if (!info.available) {
+        // Can't confirm either way - treat as not-yet-verified
+        // rather than as success, so we retry instead of
+        // silently declaring victory.
+        return false;
+    }
+
+    return info.languageCode === desiredCode;
+}
+
+
 /* ============================================================
  * Automatic subtitle application
  * ============================================================
@@ -626,10 +684,17 @@ function applyPreferredLanguage(reason) {
 class SubtitlePersistenceHandler {
     #player = null;
     #lastVideoId = null;
-    #lastScheduledVideoId = null;
-    #retryTimers = [];
-    #resetReapplyCount = 0;
     #isPatched = false;
+
+    // Single source of truth for "where are we with this video's
+    // subtitle language". Only one attempt chain is ever in
+    // flight at a time, regardless of which event triggered it.
+    #requestState = {
+        videoId: null,
+        status: REQUEST_STATUS.IDLE,
+        attempt: 0,
+        timer: null,
+    };
 
     constructor() {
         debugLog('SubtitlePersistenceHandler constructor');
@@ -755,100 +820,169 @@ class SubtitlePersistenceHandler {
         }, 1500);
     }
 
-    #clearRetryTimers(reason = 'unspecified') {
-        const count = this.#retryTimers.length;
+    #clearRequestTimer(reason = 'unspecified') {
+        if (this.#requestState.timer) {
+            clearTimeout(this.#requestState.timer);
+            this.#requestState.timer = null;
 
-        for (const timerId of this.#retryTimers) {
-            clearTimeout(timerId);
+            debugLog(`Request timer cleared | reason=${reason}`);
         }
-
-        this.#retryTimers = [];
-
-        debugLog(
-            `Retry timers cleared | count=${count} | reason=${reason}`
-        );
     }
 
-    #scheduleRetries(reason, videoId) {
-        if (!videoId) {
-            debugLog(
-                `Retry schedule skipped | no videoId | reason=${reason}`
-            );
+    // Single entry point for every trigger (state change, playback
+    // start, onApiChange, player reset). It decides whether an
+    // attempt chain needs to start; it never applies directly.
+    #requestApply(reason) {
+        const videoId = this.#getVideoId();
 
+        if (!videoId) {
+            debugLog(`REQUEST skipped | no videoId | reason=${reason}`);
             return;
         }
 
         if (!configRead(CONFIG_KEYS.CODE)) {
+            debugLog(`REQUEST skipped | no language code | reason=${reason}`);
+            return;
+        }
+
+        if (this.#requestState.videoId !== videoId) {
             debugLog(
-                `Retry schedule skipped | no language code | reason=${reason}`
+                'REQUEST new video | resetting request state',
+                {
+                    oldVideoId: this.#requestState.videoId,
+                    newVideoId: videoId,
+                }
+            );
+
+            this.#clearRequestTimer('new video');
+
+            this.#requestState = {
+                videoId,
+                status: REQUEST_STATUS.IDLE,
+                attempt: 0,
+                timer: null,
+            };
+        }
+
+        if (this.#requestState.status === REQUEST_STATUS.CONFIRMED) {
+            debugLog(
+                `REQUEST skipped | already confirmed | videoId=${videoId} | reason=${reason}`
             );
 
             return;
         }
 
-        if (
-            videoId === this.#lastScheduledVideoId &&
-            this.#retryTimers.length > 0
-        ) {
+        if (this.#requestState.status === REQUEST_STATUS.PENDING) {
             debugLog(
-                `Retry schedule skipped | already scheduled | videoId=${videoId}`
+                `REQUEST skipped | attempt already in flight | videoId=${videoId} | reason=${reason}`
             );
 
             return;
         }
 
-        this.#clearRetryTimers('before new retry sequence');
+        if (this.#requestState.status === REQUEST_STATUS.EXHAUSTED) {
+            debugLog(
+                `REQUEST skipped | attempts exhausted for this video | videoId=${videoId} | reason=${reason}`
+            );
 
-        this.#lastScheduledVideoId = videoId;
+            return;
+        }
 
         debugLog(
-            `RETRY SEQUENCE scheduled | videoId=${videoId} | reason=${reason}`,
-            RETRY_DELAYS_MS
+            `REQUEST accepted | videoId=${videoId} | reason=${reason}`
         );
 
-        RETRY_DELAYS_MS.forEach((delay, index) => {
-            const timerId = setTimeout(() => {
-                if (!configRead(CONFIG_KEYS.ENABLED)) {
-                    debugLog(
-                        `RETRY skipped | disabled | delay=${delay}ms`
-                    );
+        this.#startAttempt(reason);
+    }
 
-                    return;
-                }
+    #startAttempt(reason) {
+        const videoId = this.#requestState.videoId;
 
-                const currentVideoId = this.#getVideoId();
+        this.#requestState.status = REQUEST_STATUS.PENDING;
+        this.#requestState.attempt += 1;
 
-                if (currentVideoId !== videoId) {
-                    debugLog(
-                        `RETRY skipped | video changed | expected=${videoId} | actual=${currentVideoId}`
-                    );
+        const attempt = this.#requestState.attempt;
 
-                    return;
-                }
+        debugLog(
+            `ATTEMPT START | attempt=${attempt}/${ATTEMPT_DELAYS_MS.length} | videoId=${videoId} | reason=${reason}`
+        );
 
-                debugLog(
-                    `RETRY EXECUTE | index=${index + 1}/${RETRY_DELAYS_MS.length} | delay=${delay}ms | videoId=${videoId} | reason=${reason}`
-                );
+        applyPreferredLanguage(`${reason} (attempt ${attempt})`);
 
-                applyPreferredLanguage(
-                    `retry +${delay}ms (${reason})`
-                );
+        this.#clearRequestTimer('scheduling verify');
 
-                if (index === RETRY_DELAYS_MS.length - 1) {
-                    this.#retryTimers = [];
+        this.#requestState.timer = setTimeout(() => {
+            this.#verifyAttempt(videoId, attempt, reason);
+        }, VERIFY_DELAY_MS);
+    }
 
-                    debugLog(
-                        `RETRY SEQUENCE finished | videoId=${videoId}`
-                    );
-                }
-            }, delay);
+    #verifyAttempt(videoId, attempt, reason) {
+        if (!configRead(CONFIG_KEYS.ENABLED)) {
+            debugLog(
+                `VERIFY skipped | disabled | videoId=${videoId} | attempt=${attempt}`
+            );
 
-            this.#retryTimers.push(timerId);
+            return;
+        }
+
+        const currentVideoId = this.#getVideoId();
+
+        if (currentVideoId !== videoId) {
+            debugLog(
+                `VERIFY skipped | video changed | expected=${videoId} | actual=${currentVideoId}`
+            );
+
+            return;
+        }
+
+        // Video is still the one we're tracking - a stale
+        // requestState (e.g. overwritten by a newer video that
+        // then changed back) shouldn't happen, but guard anyway.
+        if (this.#requestState.videoId !== videoId) {
+            debugLog(
+                `VERIFY skipped | request state moved on | videoId=${videoId}`
+            );
+
+            return;
+        }
+
+        const desiredCode = configRead(CONFIG_KEYS.CODE);
+        const player = getCurrentPlayer();
+        const matched = isTrackOnDesiredLanguage(player, desiredCode);
+
+        if (matched) {
+            this.#requestState.status = REQUEST_STATUS.CONFIRMED;
 
             debugLog(
-                `RETRY timer created | index=${index + 1} | delay=${delay}ms | videoId=${videoId}`
+                `VERIFY CONFIRMED | videoId=${videoId} | attempt=${attempt}`
             );
-        });
+
+            return;
+        }
+
+        if (attempt >= ATTEMPT_DELAYS_MS.length) {
+            this.#requestState.status = REQUEST_STATUS.EXHAUSTED;
+
+            debugWarn(
+                `VERIFY FAILED | giving up after max attempts | videoId=${videoId} | attempt=${attempt}`
+            );
+
+            return;
+        }
+
+        const delay = ATTEMPT_DELAYS_MS[attempt];
+
+        debugLog(
+            `VERIFY NOT MATCHED | scheduling next attempt | videoId=${videoId} | nextDelay=${delay}ms`
+        );
+
+        this.#requestState.status = REQUEST_STATUS.IDLE;
+
+        this.#clearRequestTimer('scheduling next attempt');
+
+        this.#requestState.timer = setTimeout(() => {
+            this.#startAttempt(`retry +${delay}ms (${reason})`);
+        }, delay);
     }
 
     #updateVideoContext(videoId) {
@@ -862,10 +996,6 @@ class SubtitlePersistenceHandler {
             );
 
             this.#lastVideoId = videoId;
-            this.#lastScheduledVideoId = null;
-            this.#resetReapplyCount = 0;
-
-            this.#clearRetryTimers('video context changed');
         }
     }
 
@@ -895,10 +1025,7 @@ class SubtitlePersistenceHandler {
         this.#updateVideoContext(videoId);
 
         if (playing) {
-            this.#scheduleRetries(
-                'stateChange:isPlaying',
-                videoId
-            );
+            this.#requestApply('stateChange:isPlaying');
         }
     };
 
@@ -933,10 +1060,7 @@ class SubtitlePersistenceHandler {
 
         this.#updateVideoContext(videoId);
 
-        this.#scheduleRetries(
-            'playbackStartExternal',
-            videoId
-        );
+        this.#requestApply('playbackStartExternal');
     };
 
     #handleApiChange = () => {
@@ -972,9 +1096,7 @@ class SubtitlePersistenceHandler {
 
         this.#updateVideoContext(videoId);
 
-        // Original behavior:
-        // apply once when the captions module becomes available.
-        applyPreferredLanguage('onApiChange');
+        this.#requestApply('onApiChange');
     };
 
     #onPlayerResetToNonTranslation() {
@@ -1012,45 +1134,24 @@ class SubtitlePersistenceHandler {
             return;
         }
 
-        if (this.#resetReapplyCount >= MAX_RESET_REAPPLY) {
-            debugWarn(
-                'Player reset ignored | maximum re-apply count reached',
-                {
-                    videoId,
-                    count: this.#resetReapplyCount,
-                    max: MAX_RESET_REAPPLY,
-                }
-            );
-
-            return;
-        }
-
-        this.#resetReapplyCount += 1;
-
         debugWarn(
             'PLAYER RESET TO NON-TRANSLATION',
-            {
-                videoId,
-                count: this.#resetReapplyCount,
-                max: MAX_RESET_REAPPLY,
-            }
+            { videoId }
         );
 
-        const countAtScheduleTime = this.#resetReapplyCount;
+        // The player fell back to a non-translated track, which
+        // means any earlier CONFIRMED/EXHAUSTED verdict for this
+        // video no longer holds. Demote it back to idle so
+        // #requestApply is willing to start a fresh attempt chain,
+        // then go through the same single entry point as every
+        // other trigger (no separate ad-hoc timer/counter here).
+        if (this.#requestState.videoId === videoId) {
+            this.#clearRequestTimer('player reset');
 
-        setTimeout(() => {
-            debugLog(
-                `RESET RE-APPLY timer executed | count=${countAtScheduleTime} | videoId=${this.#getVideoId()}`
-            );
+            this.#requestState.status = REQUEST_STATUS.IDLE;
+        }
 
-            applyPreferredLanguage(
-                `player reset #${countAtScheduleTime}`
-            );
-        }, 350);
-
-        debugLog(
-            `RESET RE-APPLY timer created | delay=350ms | count=${countAtScheduleTime}`
-        );
+        this.#requestApply('playerReset');
     }
 
     #setupConfigListener() {
@@ -1072,11 +1173,16 @@ class SubtitlePersistenceHandler {
                 );
 
                 if (!isEnabled) {
-                    this.#clearRetryTimers(
+                    this.#clearRequestTimer(
                         'configuration disabled'
                     );
 
-                    this.#lastScheduledVideoId = null;
+                    this.#requestState = {
+                        videoId: null,
+                        status: REQUEST_STATUS.IDLE,
+                        attempt: 0,
+                        timer: null,
+                    };
 
                     return;
                 }
@@ -1086,12 +1192,19 @@ class SubtitlePersistenceHandler {
                     key === CONFIG_KEYS.CODE ||
                     key === CONFIG_KEYS.NAME
                 ) {
-                    this.#lastScheduledVideoId = null;
-                    this.#resetReapplyCount = 0;
-
-                    this.#clearRetryTimers(
+                    this.#clearRequestTimer(
                         `configuration changed: ${key}`
                     );
+
+                    // A new desired language means any earlier
+                    // confirmation is for the old language, not
+                    // this one - force a fresh attempt chain.
+                    this.#requestState = {
+                        videoId: null,
+                        status: REQUEST_STATUS.IDLE,
+                        attempt: 0,
+                        timer: null,
+                    };
 
                     const videoId = this.#getVideoId();
 
@@ -1105,16 +1218,7 @@ class SubtitlePersistenceHandler {
                     );
 
                     if (videoId) {
-                        if (this.#isPlayerPlaying()) {
-                            this.#scheduleRetries(
-                                `configChanged:${key}`,
-                                videoId
-                            );
-                        } else {
-                            applyPreferredLanguage(
-                                `configChanged:${key} (not playing)`
-                            );
-                        }
+                        this.#requestApply(`configChanged:${key}`);
                     }
                 }
             }
