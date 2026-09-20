@@ -74,35 +74,81 @@ function isNonTranslationSubtitleCommand(cmd) {
     return false;
 }
 
+function ensureCaptionsModule(player) {
+    if (!player) return;
+    try {
+        if (typeof player.loadModule === 'function') {
+            player.loadModule('captions');
+        }
+    } catch (e) { /* already loaded */ }
+}
+
+/**
+ * Set track + force caption data reload so the UI selection actually renders.
+ * Menu can show the right language while on-screen captions stay blank without reload.
+ */
 function tryPlayerSetOption(languageCode, languageName) {
     const player = document.querySelector(SELECTORS.PLAYER);
     if (!player || typeof player.setOption !== 'function') return false;
 
     try {
-        if (typeof player.loadModule === 'function') {
-            try {
-                player.loadModule('captions');
-            } catch (e) { /* already loaded */ }
-        }
-        try {
-            player.setOption('captions', 'track', {
+        ensureCaptionsModule(player);
+
+        const trackPayload = {
+            languageCode,
+            translationLanguage: {
                 languageCode,
-                translationLanguage: {
-                    languageCode,
-                    languageName: languageName || languageCode,
-                },
-            });
-            return true;
-        } catch (e) { /* fall through */ }
+                languageName: languageName || languageCode,
+            },
+        };
+
+        let ok = false;
         try {
-            player.setOption('captions', 'track', { languageCode });
-            return true;
-        } catch (e2) {
-            return false;
+            player.setOption('captions', 'track', trackPayload);
+            ok = true;
+        } catch (e) {
+            try {
+                player.setOption('captions', 'track', { languageCode });
+                ok = true;
+            } catch (e2) { /* ignore */ }
         }
+
+        // Critical for 2nd+ videos: preference is set but track text never loads
+        // until captions module reloads data for the current video.
+        try {
+            player.setOption('captions', 'reload', true);
+            ok = true;
+        } catch (e) { /* ignore */ }
+
+        return ok;
     } catch (e) {
         return false;
     }
+}
+
+function scheduleCaptionReload(languageCode, languageName) {
+    const delays = [200, 800, 2000];
+    delays.forEach((ms) => {
+        setTimeout(() => {
+            const player = document.querySelector(SELECTORS.PLAYER);
+            if (!player || typeof player.setOption !== 'function') return;
+            try {
+                ensureCaptionsModule(player);
+                try {
+                    player.setOption('captions', 'track', {
+                        languageCode,
+                        translationLanguage: {
+                            languageCode,
+                            languageName: languageName || languageCode,
+                        },
+                    });
+                } catch (e) { /* ignore */ }
+                try {
+                    player.setOption('captions', 'reload', true);
+                } catch (e) { /* ignore */ }
+            } catch (e) { /* ignore */ }
+        }, ms);
+    });
 }
 
 function applyPreferredLanguage(reason) {
@@ -119,7 +165,10 @@ function applyPreferredLanguage(reason) {
 
     isInternalApply = true;
     try {
+        // 1) Tell player the preferred track
         tryPlayerSetOption(languageCode, languageName);
+
+        // 2) Same command shape as a manual auto-translate menu click
         resolveCommand({
             selectSubtitlesTrackCommand: {
                 translationLanguage: {
@@ -128,10 +177,13 @@ function applyPreferredLanguage(reason) {
                 },
             },
         });
+
+        // 3) Delayed track + reload: new videos often mark the menu selection
+        //    before caption data for THIS video is fetchable; reload forces paint.
+        scheduleCaptionReload(languageCode, languageName);
     } catch (e) {
         console.warn('[Subtitle Persistence] apply failed:', e);
     }
-    // Clear flag on next microtask so nested resolveCommand sees isInternalApply.
     Promise.resolve().then(() => {
         isInternalApply = false;
     });
