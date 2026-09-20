@@ -548,6 +548,14 @@ function getCurrentCaptionsTrackInfo(player) {
             available: true,
             raw: track,
             languageCode,
+            // Pulled out explicitly - buried inside `raw` these were
+            // easy to miss while eyeballing the panel. is_servable in
+            // particular is unverified as meaningful (no confirmed
+            // is_servable:true baseline yet), but worth surfacing on
+            // every read so we can correlate it against what's
+            // actually on screen.
+            isServable: track?.is_servable ?? null,
+            isDefault: track?.is_default ?? null,
         };
     } catch (e) {
         return {
@@ -575,7 +583,62 @@ function isTrackOnDesiredLanguage(player, desiredCode) {
         return false;
     }
 
+    if (info.languageCode === desiredCode && info.isServable === false) {
+        debugWarn(
+            'VERIFY language matched but is_servable=false | flagging for correlation',
+            info
+        );
+    }
+
     return info.languageCode === desiredCode;
+}
+
+
+// Best-effort probe of the actual rendered caption DOM. Selectors
+// are guesses at common YouTube caption container class names -
+// unverified against this specific TizenTube build. Purely
+// diagnostic: logs whatever it finds (or finds nothing) so a real
+// selector can be confirmed by comparing against the TV screen,
+// without this ever gating any decision the handler makes.
+const CAPTION_DOM_SELECTORS = [
+    '.captions-text',
+    '.caption-window',
+    '.ytp-caption-window-container',
+    '.ytp-caption-window-rollup',
+    '.html5-captions-text',
+    '.captions-line',
+];
+
+function probeCaptionDom() {
+    const matches = [];
+
+    for (const selector of CAPTION_DOM_SELECTORS) {
+        let nodes;
+
+        try {
+            nodes = document.querySelectorAll(selector);
+        } catch (e) {
+            continue;
+        }
+
+        if (!nodes || nodes.length === 0) continue;
+
+        const texts = Array.from(nodes)
+            .map((node) => (node.textContent || '').trim())
+            .filter(Boolean);
+
+        matches.push({
+            selector,
+            elementCount: nodes.length,
+            nonEmptyTextCount: texts.length,
+            sampleText: texts.slice(0, 2),
+        });
+    }
+
+    return {
+        matchedSelectors: matches,
+        anyVisibleText: matches.some((m) => m.nonEmptyTextCount > 0),
+    };
 }
 
 
@@ -993,6 +1056,11 @@ class SubtitlePersistenceHandler {
         const player = getCurrentPlayer();
         const matched = isTrackOnDesiredLanguage(player, desiredCode);
 
+        debugLog(
+            `VERIFY DOM caption probe | videoId=${videoId} | attempt=${attempt}`,
+            probeCaptionDom()
+        );
+
         if (matched) {
             this.#requestState.status = REQUEST_STATUS.CONFIRMED;
 
@@ -1092,6 +1160,7 @@ class SubtitlePersistenceHandler {
         const desiredCode = configRead(CONFIG_KEYS.CODE);
         const player = getCurrentPlayer();
         const matched = isTrackOnDesiredLanguage(player, desiredCode);
+        const domProbe = probeCaptionDom();
 
         if (matched) {
             if (this.#heartbeatDriftStrikes > 0) {
@@ -1101,6 +1170,24 @@ class SubtitlePersistenceHandler {
             }
 
             this.#heartbeatDriftStrikes = 0;
+
+            if (!domProbe.anyVisibleText) {
+                // This is the exact mismatch under investigation:
+                // API-level selection reports success, but nothing
+                // is actually rendered on screen. Logged only - the
+                // selectors above are unverified, so this must not
+                // drive any retry/demote decision yet.
+                debugWarn(
+                    `HEARTBEAT confirmed track matches but no caption text found in DOM | videoId=${videoId}`,
+                    domProbe
+                );
+            } else {
+                debugLog(
+                    `HEARTBEAT confirmed and caption text present | videoId=${videoId}`,
+                    domProbe
+                );
+            }
+
             return;
         }
 
