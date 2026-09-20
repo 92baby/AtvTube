@@ -53,6 +53,14 @@ const REQUEST_STATUS = {
     EXHAUSTED: 'exhausted',
 };
 
+// Periodic re-check while CONFIRMED, to catch the player silently
+// reverting the track outside resolveCommand (so our patch never
+// sees it). Two consecutive mismatches are required before we act,
+// so a single transient read (mid-buffering, mid-ad-swap) can't by
+// itself trigger a re-apply and collide with anything in flight.
+const HEARTBEAT_INTERVAL_MS = 3000;
+const HEARTBEAT_DRIFT_STRIKES_REQUIRED = 2;
+
 // Debug settings.
 const SHOW_DIAGNOSTICS = true;
 const MAX_LOG_LINES = 45;
@@ -571,6 +579,34 @@ function isTrackOnDesiredLanguage(player, desiredCode) {
 }
 
 
+function getCaptionsAvailabilitySnapshot(player) {
+    if (!player || typeof player.getOption !== 'function') {
+        return { available: false };
+    }
+
+    try {
+        const tracklist = player.getOption('captions', 'tracklist');
+        const translationLanguages = player.getOption(
+            'captions',
+            'translationLanguages'
+        );
+
+        return {
+            available: true,
+            trackCount: Array.isArray(tracklist) ? tracklist.length : null,
+            translationLanguageCount: Array.isArray(translationLanguages)
+                ? translationLanguages.length
+                : null,
+        };
+    } catch (e) {
+        return {
+            available: false,
+            error: e?.message || e,
+        };
+    }
+}
+
+
 /* ============================================================
  * Automatic subtitle application
  * ============================================================
@@ -696,6 +732,10 @@ class SubtitlePersistenceHandler {
         timer: null,
     };
 
+    // Consecutive heartbeat mismatches for the current CONFIRMED
+    // video. Reset on match, on video change, and once acted on.
+    #heartbeatDriftStrikes = 0;
+
     constructor() {
         debugLog('SubtitlePersistenceHandler constructor');
         this.init();
@@ -707,6 +747,7 @@ class SubtitlePersistenceHandler {
         this.#startDOMCheck();
         this.#setupConfigListener();
         this.#patchResolveCommand();
+        this.#startHeartbeat();
 
         debugLog('Subtitle persistence initialization END');
     }
@@ -862,6 +903,8 @@ class SubtitlePersistenceHandler {
                 attempt: 0,
                 timer: null,
             };
+
+            this.#heartbeatDriftStrikes = 0;
         }
 
         if (this.#requestState.status === REQUEST_STATUS.CONFIRMED) {
@@ -963,9 +1006,27 @@ class SubtitlePersistenceHandler {
         if (attempt >= ATTEMPT_DELAYS_MS.length) {
             this.#requestState.status = REQUEST_STATUS.EXHAUSTED;
 
-            debugWarn(
-                `VERIFY FAILED | giving up after max attempts | videoId=${videoId} | attempt=${attempt}`
-            );
+            const availability = getCaptionsAvailabilitySnapshot(player);
+
+            if (availability.available && availability.trackCount === 0) {
+                debugWarn(
+                    `VERIFY FAILED | no captions track exists for this video | videoId=${videoId} | attempt=${attempt}`,
+                    availability
+                );
+            } else if (
+                availability.available &&
+                availability.translationLanguageCount === 0
+            ) {
+                debugWarn(
+                    `VERIFY FAILED | video has captions but no translation languages offered | videoId=${videoId} | attempt=${attempt}`,
+                    availability
+                );
+            } else {
+                debugWarn(
+                    `VERIFY FAILED | giving up after max attempts | videoId=${videoId} | attempt=${attempt}`,
+                    availability
+                );
+            }
 
             return;
         }
@@ -983,6 +1044,86 @@ class SubtitlePersistenceHandler {
         this.#requestState.timer = setTimeout(() => {
             this.#startAttempt(`retry +${delay}ms (${reason})`);
         }, delay);
+    }
+
+    #startHeartbeat() {
+        debugLog(
+            `Heartbeat drift check started | interval=${HEARTBEAT_INTERVAL_MS}ms`
+        );
+
+        setInterval(() => {
+            this.#heartbeatCheck();
+        }, HEARTBEAT_INTERVAL_MS);
+    }
+
+    // Only ever reads and compares - never calls setOption
+    // directly. If drift is confirmed, it demotes the state to
+    // IDLE and hands off to #requestApply, the same single entry
+    // point every other trigger uses. That guarantees this can
+    // never overlap with an attempt already in flight (PENDING
+    // blocks it) and never issues a competing setOption call.
+    #heartbeatCheck() {
+        if (!configRead(CONFIG_KEYS.ENABLED)) return;
+        if (!configRead(CONFIG_KEYS.CODE)) return;
+
+        // Don't sample while our own apply is actively running -
+        // the track is expected to be in flux at that moment.
+        if (isInternalApply) return;
+
+        if (this.#requestState.status !== REQUEST_STATUS.CONFIRMED) {
+            this.#heartbeatDriftStrikes = 0;
+            return;
+        }
+
+        const videoId = this.#getVideoId();
+
+        if (!videoId || videoId !== this.#requestState.videoId) {
+            this.#heartbeatDriftStrikes = 0;
+            return;
+        }
+
+        if (!this.#isPlayerPlaying()) {
+            // Paused / buffering / ad transition - too easy to
+            // misread a transient state here, so skip this tick
+            // rather than risk a false strike.
+            return;
+        }
+
+        const desiredCode = configRead(CONFIG_KEYS.CODE);
+        const player = getCurrentPlayer();
+        const matched = isTrackOnDesiredLanguage(player, desiredCode);
+
+        if (matched) {
+            if (this.#heartbeatDriftStrikes > 0) {
+                debugLog(
+                    `HEARTBEAT drift strike reset | videoId=${videoId}`
+                );
+            }
+
+            this.#heartbeatDriftStrikes = 0;
+            return;
+        }
+
+        this.#heartbeatDriftStrikes += 1;
+
+        debugWarn(
+            `HEARTBEAT drift suspected | videoId=${videoId} | strikes=${this.#heartbeatDriftStrikes}/${HEARTBEAT_DRIFT_STRIKES_REQUIRED}`
+        );
+
+        if (this.#heartbeatDriftStrikes < HEARTBEAT_DRIFT_STRIKES_REQUIRED) {
+            return;
+        }
+
+        debugWarn(
+            `HEARTBEAT DRIFT CONFIRMED | demoting and re-requesting | videoId=${videoId}`
+        );
+
+        this.#heartbeatDriftStrikes = 0;
+
+        this.#clearRequestTimer('heartbeat drift');
+        this.#requestState.status = REQUEST_STATUS.IDLE;
+
+        this.#requestApply('heartbeatDrift');
     }
 
     #updateVideoContext(videoId) {
