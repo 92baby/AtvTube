@@ -55,7 +55,6 @@
                         }
                     },
                     "fixUI": "Fix UI",
-                    "forceFullRedraw": "Force Full Redraw on Settings Update (fixes menu glitches, may cause a brief flicker)",
                     "hqThumbnails": "Enable High Quality Thumbnails",
                     "longPress": "Enable Long Press Actions",
                     "shorts": "Enable Shorts",
