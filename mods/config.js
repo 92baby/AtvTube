@@ -20,6 +20,7 @@ const defaultConfig = {
   focusContainerColor: '#0f0f0f',
   routeColor: '#0f0f0f',
   enableFixedUI: (window.h5vcc) ? false : true,
+  lastResolvedUILanguage: null,
   enableHqThumbnails: false,
   enableChapters: true,
   enableLongPress: true,
