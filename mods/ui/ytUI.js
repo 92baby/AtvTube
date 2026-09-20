@@ -1,4 +1,44 @@
 import resolveCommand from '../resolveCommand.js';
+import { configRead } from '../config.js';
+
+// Some devices' native panel renderer doesn't fully invalidate the
+// previous frame when a popup's content is patched in place
+// (openPopupAction.updateAction === true), leaving stale pixels/UI
+// behind ("screen corruption"/花屏). When enableForceFullRedraw is on,
+// we close the popup and reopen it fresh instead of patching it, which
+// forces a full repaint at the cost of a brief flicker.
+//
+// Rapid, repeated updates (e.g. mashing checkboxes) are coalesced: we
+// only ever have one POPUP_BACK + reopen pair in flight per popup id,
+// and the latest content wins.
+const pendingFullRedraws = {};
+const FULL_REDRAW_REOPEN_DELAY_MS = 80;
+
+function scheduleFullRedraw(header, content, id) {
+    const pending = pendingFullRedraws[id];
+
+    if (pending) {
+        // A close is already in flight for this popup; just swap in the
+        // latest content, don't send another POPUP_BACK.
+        pending.header = header;
+        pending.content = content;
+        return;
+    }
+
+    resolveCommand({
+        signalAction: {
+            signal: 'POPUP_BACK'
+        }
+    });
+
+    pendingFullRedraws[id] = { header, content };
+    pendingFullRedraws[id].timer = setTimeout(() => {
+        const latest = pendingFullRedraws[id];
+        delete pendingFullRedraws[id];
+        if (!latest) return;
+        resolveCommand(Modal(latest.header, latest.content, id, false));
+    }, FULL_REDRAW_REOPEN_DELAY_MS);
+}
 
 function showToast(title, subtitle, thumbnails) {
     const toastCmd = {
@@ -104,22 +144,13 @@ function Modal(header, content, id, update) {
 }
 
 function showModal(header, content, id, update) {
-    // Avoid in-place updateAction on Tizen/Cobalt: it can leave visual artifacts
-    // (overlapping text, black blocks) on some TVs. Close then reopen instead.
-    if (update) {
-        resolveCommand({
-            signalAction: {
-                signal: 'POPUP_BACK'
-            }
-        });
-        const modalCmd = Modal(header, content, id, false);
-        setTimeout(() => {
-            resolveCommand(modalCmd);
-        }, 50);
+    if (update && configRead('enableForceFullRedraw')) {
+        scheduleFullRedraw(header, content, id);
         return;
     }
 
     const modalCmd = Modal(header, content, id, update);
+
     resolveCommand(modalCmd);
 }
 

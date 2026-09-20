@@ -229,6 +229,9 @@ export default function modernUI(update, parameters) {
             name: t('settings.options.misc.title'),
             icon: 'SETTINGS',
             value: null,
+            menuHeader: {
+                title: t('settings.options.misc.title')
+            },
             options: [
                 {
                     name: t('settings.options.misc.options.endScreenCards'),
@@ -272,6 +275,11 @@ export default function modernUI(update, parameters) {
                     value: 'enableFixedUI'
                 },
                 {
+                    name: t('settings.options.misc.options.forceFullRedraw'),
+                    icon: 'STAR',
+                    value: 'enableForceFullRedraw'
+                },
+                {
                     name: t('settings.options.misc.options.hqThumbnails'),
                     icon: 'VIDEO_QUALITY',
                     value: 'enableHqThumbnails'
@@ -312,6 +320,9 @@ export default function modernUI(update, parameters) {
             name: t('settings.options.subtitles.title'),
             icon: 'TRANSLATE',
             value: null,
+            menuHeader: {
+                title: t('settings.options.subtitles.title')
+            },
             options: [
                 {
                     name: t('settings.options.subtitles.options.showLocalSubtitle'),

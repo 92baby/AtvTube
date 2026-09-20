@@ -55,6 +55,7 @@
                         }
                     },
                     "fixUI": "修复界面",
+                    "forceFullRedraw": "设置更新时强制完整重绘（修复菜单花屏，但切换选项时会有短暂闪烁）",
                     "hqThumbnails": "启用高清缩略图",
                     "longPress": "启用长按操作",
                     "shorts": "启用 Shorts",
