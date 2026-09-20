@@ -1,17 +1,28 @@
-// TizenTube Subtitle Language Persistence + TV Diagnostics
-//
-// Features:
-// 1. Remember auto-translation subtitle language.
-// 2. Display diagnostic logs directly on the TV screen.
-// 3. Observe player events and subtitle commands.
-// 4. Do not block or modify YouTube TV commands.
-// 5. Do not automatically re-apply after non-translation commands.
-//
-// Diagnostic panel:
-// - Visible on TV screen.
-// - Maximum 35 log lines.
-// - Click/tap the panel to clear logs.
-// - Set SHOW_DIAGNOSTICS = false to disable the panel.
+
+/*
+ * TizenTube Subtitle Language Persistence Mod
+ *
+ * Purpose:
+ *   Remember the auto-translate subtitle language selected by the user
+ *   and re-apply it when a new video starts or the player resets subtitles.
+ *
+ * This version keeps the original automatic-apply behavior and adds
+ * detailed on-screen diagnostics.
+ *
+ * Debug panel:
+ *   Top-left corner of the TV screen.
+ *
+ * Logged information:
+ *   - Player discovery and video changes
+ *   - Player lifecycle events
+ *   - Retry scheduling and execution
+ *   - captions.loadModule()
+ *   - captions.setOption()
+ *   - Full subtitle-related resolveCommand() data
+ *   - Internal vs external commands
+ *   - Translation and non-translation commands
+ *   - Player reset and re-apply count
+ */
 
 import { configRead, configWrite, configChangeEmitter } from '../config.js';
 import resolveCommand from '../resolveCommand.js';
@@ -26,92 +37,106 @@ const CONFIG_KEYS = {
     NAME: 'preferredSubtitleLanguageName',
 };
 
-// =========================
-// Diagnostic configuration
-// =========================
+// Original retry schedule.
+const RETRY_DELAYS_MS = [300, 900, 1800, 3500];
 
+// Original maximum number of re-applies after player reset.
+const MAX_RESET_REAPPLY = 3;
+
+// Debug settings.
 const SHOW_DIAGNOSTICS = true;
-const MAX_LOG_LINES = 35;
-const PANEL_ID = 'subtitle-persistence-debug-panel';
+const MAX_LOG_LINES = 45;
+const DEBUG_PANEL_ID = 'subtitle-persistence-debug-panel';
 
 let isInternalApply = false;
+let logSequence = 0;
+let applySequence = 0;
 let debugPanel = null;
 let debugLines = [];
 
-// =========================
-// TV visible diagnostics
-// =========================
+
+/* ============================================================
+ * Diagnostic helpers
+ * ============================================================
+ */
 
 function getTimeString() {
     const now = new Date();
 
-    return now.toLocaleTimeString('en-GB', {
-        hour12: false,
-        fractionalSecondDigits: 3,
-    });
+    try {
+        return now.toLocaleTimeString('en-GB', {
+            hour12: false,
+            timeZoneName: 'short',
+            fractionalSecondDigits: 3,
+        });
+    } catch (e) {
+        // Compatibility fallback for older Tizen WebView.
+        const h = String(now.getHours()).padStart(2, '0');
+        const m = String(now.getMinutes()).padStart(2, '0');
+        const s = String(now.getSeconds()).padStart(2, '0');
+        const ms = String(now.getMilliseconds()).padStart(3, '0');
+
+        return `${h}:${m}:${s}.${ms}`;
+    }
 }
 
-function safeString(value, maxLength = 500) {
+function safeStringify(value, maxLength = 6000) {
     try {
-        if (value === undefined) return 'undefined';
-        if (value === null) return 'null';
+        const result = JSON.stringify(value);
 
-        const text = typeof value === 'string'
-            ? value
-            : JSON.stringify(value);
+        if (!result) {
+            return String(result);
+        }
 
-        if (!text) return '';
+        if (result.length > maxLength) {
+            return `${result.slice(0, maxLength)} ...[TRUNCATED]`;
+        }
 
-        return text.length > maxLength
-            ? text.substring(0, maxLength) + '...'
-            : text;
+        return result;
     } catch (e) {
-        return '[unserializable]';
+        return `[JSON ERROR: ${e?.message || e}]`;
     }
 }
 
 function ensureDebugPanel() {
     if (!SHOW_DIAGNOSTICS) return null;
+    if (!document.body) return null;
 
     if (debugPanel && document.body.contains(debugPanel)) {
         return debugPanel;
     }
 
-    debugPanel = document.getElementById(PANEL_ID);
+    debugPanel = document.getElementById(DEBUG_PANEL_ID);
 
     if (!debugPanel) {
-        debugPanel = document.createElement('div');
-        debugPanel.id = PANEL_ID;
+        debugPanel = document.createElement('pre');
+        debugPanel.id = DEBUG_PANEL_ID;
 
-        debugPanel.style.position = 'fixed';
-        debugPanel.style.top = '20px';
-        debugPanel.style.right = '20px';
-        debugPanel.style.width = '620px';
-        debugPanel.style.maxWidth = '90vw';
-        debugPanel.style.maxHeight = '45vh';
-        debugPanel.style.overflow = 'hidden';
-        debugPanel.style.zIndex = '2147483647';
-
-        debugPanel.style.background = 'rgba(0, 0, 0, 0.88)';
-        debugPanel.style.color = '#00ff66';
-        debugPanel.style.border = '2px solid #00ff66';
-        debugPanel.style.borderRadius = '6px';
-
-        debugPanel.style.padding = '10px';
-        debugPanel.style.fontFamily = 'monospace';
-        debugPanel.style.fontSize = '14px';
-        debugPanel.style.lineHeight = '1.35';
-        debugPanel.style.whiteSpace = 'pre-wrap';
-        debugPanel.style.overflowWrap = 'anywhere';
-
-        debugPanel.style.pointerEvents = 'auto';
-
-        debugPanel.title = 'Click to clear subtitle diagnostics';
-
-        debugPanel.addEventListener('click', () => {
-            debugLines = [];
-            renderDebugPanel();
-        });
+        debugPanel.style.cssText = [
+            'position: fixed',
+            'top: 12px',
+            'left: 12px',
+            'right: auto',
+            'width: 720px',
+            'max-width: 92vw',
+            'max-height: 55vh',
+            'overflow: hidden',
+            'box-sizing: border-box',
+            'margin: 0',
+            'padding: 14px 16px',
+            'border: 2px solid #00ff66',
+            'border-radius: 8px',
+            'background: rgba(0, 0, 0, 0.88)',
+            'color: #00ff66',
+            'font-family: monospace',
+            'font-size: 14px',
+            'font-weight: bold',
+            'line-height: 1.35',
+            'white-space: pre-wrap',
+            'overflow-wrap: anywhere',
+            'z-index: 2147483647',
+            'pointer-events: none',
+        ].join(';');
 
         document.body.appendChild(debugPanel);
     }
@@ -119,37 +144,128 @@ function ensureDebugPanel() {
     return debugPanel;
 }
 
-function renderDebugPanel() {
-    if (!SHOW_DIAGNOSTICS) return;
-
+function updateDebugPanel() {
     const panel = ensureDebugPanel();
+
     if (!panel) return;
 
     panel.textContent = debugLines.join('\n');
 }
 
-function debugLog(eventName, details = '') {
-    const line = `[${getTimeString()}] ${eventName}` +
-        (details ? ` | ${details}` : '');
+function debugLog(message, detail = undefined) {
+    const sequence = String(++logSequence).padStart(4, '0');
+    const time = getTimeString();
 
-    debugLines.push(line);
+    const prefix = `[${sequence} ${time}]`;
 
-    if (debugLines.length > MAX_LOG_LINES) {
-        debugLines.splice(0, debugLines.length - MAX_LOG_LINES);
+    let panelLine = `${prefix} ${message}`;
+
+    if (detail !== undefined) {
+        const detailText = typeof detail === 'string'
+            ? detail
+            : safeStringify(detail, 1800);
+
+        panelLine += ` | ${detailText}`;
+
+        // Keep the full object in the browser console.
+        console.log(`${prefix} ${message}`, detail);
+    } else {
+        console.log(`${prefix} ${message}`);
     }
 
-    console.log('[Subtitle Persistence]', line);
+    debugLines.push(panelLine);
 
-    renderDebugPanel();
+    while (debugLines.length > MAX_LOG_LINES) {
+        debugLines.shift();
+    }
+
+    updateDebugPanel();
 }
 
-function debugWarn(eventName, details = '') {
-    debugLog(`WARN: ${eventName}`, details);
+function debugWarn(message, detail = undefined) {
+    const sequence = String(++logSequence).padStart(4, '0');
+    const time = getTimeString();
+
+    const prefix = `[${sequence} ${time}] WARN`;
+
+    let panelLine = `${prefix} ${message}`;
+
+    if (detail !== undefined) {
+        const detailText = typeof detail === 'string'
+            ? detail
+            : safeStringify(detail, 1800);
+
+        panelLine += ` | ${detailText}`;
+
+        console.warn(`${prefix} ${message}`, detail);
+    } else {
+        console.warn(`${prefix} ${message}`);
+    }
+
+    debugLines.push(panelLine);
+
+    while (debugLines.length > MAX_LOG_LINES) {
+        debugLines.shift();
+    }
+
+    updateDebugPanel();
 }
 
-// =========================
-// Command inspection
-// =========================
+function getCurrentPlayer() {
+    try {
+        return document.querySelector(SELECTORS.PLAYER);
+    } catch (e) {
+        return null;
+    }
+}
+
+function getPlayerVideoId(player) {
+    if (!player) return null;
+
+    try {
+        return player.getVideoData?.()?.video_id || null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function getPlayerStateObject(player) {
+    if (!player) return null;
+
+    try {
+        return player.getPlayerStateObject?.() || null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function getPlayerStateSummary(player) {
+    if (!player) {
+        return {
+            exists: false,
+        };
+    }
+
+    let numericState = null;
+
+    try {
+        numericState = player.getPlayerState?.() ?? null;
+    } catch (e) {
+        numericState = null;
+    }
+
+    return {
+        videoId: getPlayerVideoId(player),
+        numericState,
+        stateObject: getPlayerStateObject(player),
+    };
+}
+
+
+/* ============================================================
+ * Subtitle command helpers
+ * ============================================================
+ */
 
 function extractTranslationCommand(cmd) {
     if (!cmd) return null;
@@ -162,9 +278,7 @@ function extractTranslationCommand(cmd) {
         for (const subCmd of cmd.commandExecutorCommand.commands) {
             const result = extractTranslationCommand(subCmd);
 
-            if (result) {
-                return result;
-            }
+            if (result) return result;
         }
     }
 
@@ -187,79 +301,137 @@ function hasSelectSubtitlesTrackCommand(cmd) {
     return false;
 }
 
-function getSubtitleCommandSummary(cmd) {
-    const translationLanguage = extractTranslationCommand(cmd);
+function isNonTranslationSubtitleCommand(cmd) {
+    if (!cmd) return false;
 
-    const result = {
-        hasSubtitleCommand: hasSelectSubtitlesTrackCommand(cmd),
-        translationLanguage: translationLanguage || null,
-        command: cmd,
-    };
+    if (
+        cmd.selectSubtitlesTrackCommand &&
+        !cmd.selectSubtitlesTrackCommand.translationLanguage
+    ) {
+        return true;
+    }
 
-    return result;
+    if (Array.isArray(cmd.commandExecutorCommand?.commands)) {
+        return cmd.commandExecutorCommand.commands.some(
+            isNonTranslationSubtitleCommand
+        );
+    }
+
+    return false;
 }
 
-function logSubtitleCommand(source, cmd) {
-    const summary = getSubtitleCommandSummary(cmd);
+function getSubtitleCommandType(cmd) {
+    const translationLanguage = extractTranslationCommand(cmd);
 
-    if (!summary.hasSubtitleCommand) {
+    if (translationLanguage) {
+        return 'translation';
+    }
+
+    if (isNonTranslationSubtitleCommand(cmd)) {
+        return 'non-translation';
+    }
+
+    if (hasSelectSubtitlesTrackCommand(cmd)) {
+        return 'subtitle-track-unknown';
+    }
+
+    return 'other';
+}
+
+function logSubtitleCommand(stage, cmd) {
+    const type = getSubtitleCommandType(cmd);
+    const translationLanguage = extractTranslationCommand(cmd);
+
+    debugLog(
+        `${stage} | type=${type} | internal=${isInternalApply}`,
+        {
+            translationLanguage,
+            command: cmd,
+        }
+    );
+}
+
+
+/* ============================================================
+ * Player captions API diagnostics
+ * ============================================================
+ */
+
+function logCaptionsOptions(player, reason) {
+    if (!player || typeof player.getOptions !== 'function') {
+        debugLog(`captions.getOptions unavailable | reason=${reason}`);
         return;
     }
 
-    const translation = summary.translationLanguage;
+    try {
+        const options = player.getOptions('captions');
 
-    if (translation) {
         debugLog(
-            `${source}: translation command`,
-            `code=${translation.languageCode || 'none'}, ` +
-            `name=${translation.languageName || 'none'}, ` +
-            `internal=${isInternalApply}`
+            `captions options | reason=${reason}`,
+            options
         );
-    } else {
-        debugLog(
-            `${source}: non-translation command`,
-            `internal=${isInternalApply}`
+    } catch (e) {
+        debugWarn(
+            `captions.getOptions failed | reason=${reason}`,
+            e?.message || e
         );
     }
-
-    // For detailed investigation, print the command structure
-    // in the browser console as well.
-    console.log('[Subtitle Debug] Full subtitle command:', cmd);
 }
 
-// =========================
-// Player API diagnostics
-// =========================
+function tryPlayerSetOption(languageCode, languageName, applyId) {
+    const player = getCurrentPlayer();
 
-function tryPlayerSetOption(languageCode, languageName) {
-    const player = document.querySelector(SELECTORS.PLAYER);
-
-    if (!player || typeof player.setOption !== 'function') {
+    if (!player) {
         debugWarn(
-            'setOption unavailable',
-            'player or setOption is missing'
+            `setOption skipped | applyId=${applyId} | player not found`
         );
 
         return false;
     }
 
+    if (typeof player.setOption !== 'function') {
+        debugWarn(
+            `setOption skipped | applyId=${applyId} | setOption unavailable`
+        );
+
+        return false;
+    }
+
+    debugLog(
+        `captions.setOption START | applyId=${applyId}`,
+        {
+            languageCode,
+            languageName,
+            videoId: getPlayerVideoId(player),
+        }
+    );
+
     try {
         if (typeof player.loadModule === 'function') {
-            debugLog('captions.loadModule', 'called');
+            debugLog(
+                `captions.loadModule called | applyId=${applyId}`
+            );
 
             try {
-                player.loadModule('captions');
+                const loadResult = player.loadModule('captions');
 
-                debugLog('captions.loadModule', 'returned');
-            } catch (error) {
+                debugLog(
+                    `captions.loadModule returned | applyId=${applyId}`,
+                    loadResult
+                );
+            } catch (e) {
                 debugWarn(
-                    'captions.loadModule',
-                    safeString(error)
+                    `captions.loadModule threw | applyId=${applyId}`,
+                    e?.message || e
                 );
             }
+        } else {
+            debugLog(
+                `captions.loadModule unavailable | applyId=${applyId}`
+            );
         }
 
-        const translatedTrack = {
+        const translationPayload = {
             languageCode,
             translationLanguage: {
                 languageCode,
@@ -268,77 +440,87 @@ function tryPlayerSetOption(languageCode, languageName) {
         };
 
         debugLog(
-            'captions.setOption',
-            safeString(translatedTrack)
+            `captions.setOption translation payload | applyId=${applyId}`,
+            translationPayload
         );
 
         try {
-            player.setOption(
+            const result = player.setOption(
                 'captions',
                 'track',
-                translatedTrack
+                translationPayload
             );
 
             debugLog(
-                'captions.setOption',
-                'translation payload returned'
+                `captions.setOption translation returned | applyId=${applyId}`,
+                result
+            );
+
+            debugLog(
+                `captions.setOption SUCCESS | mode=translation | applyId=${applyId}`
             );
 
             return true;
-        } catch (error) {
+        } catch (e) {
             debugWarn(
-                'captions.setOption translation failed',
-                safeString(error)
+                `captions.setOption translation threw | applyId=${applyId}`,
+                e?.message || e
             );
         }
 
-        const normalTrack = {
+        const fallbackPayload = {
             languageCode,
         };
 
         debugLog(
-            'captions.setOption fallback',
-            safeString(normalTrack)
+            `captions.setOption fallback payload | applyId=${applyId}`,
+            fallbackPayload
         );
 
         try {
-            player.setOption(
+            const result = player.setOption(
                 'captions',
                 'track',
-                normalTrack
+                fallbackPayload
             );
 
             debugLog(
-                'captions.setOption',
-                'normal payload returned'
+                `captions.setOption fallback returned | applyId=${applyId}`,
+                result
+            );
+
+            debugLog(
+                `captions.setOption SUCCESS | mode=fallback | applyId=${applyId}`
             );
 
             return true;
-        } catch (error) {
+        } catch (e2) {
             debugWarn(
-                'captions.setOption fallback failed',
-                safeString(error)
+                `captions.setOption fallback threw | applyId=${applyId}`,
+                e2?.message || e2
             );
 
             return false;
         }
-    } catch (error) {
+    } catch (e) {
         debugWarn(
-            'setOption outer exception',
-            safeString(error)
+            `captions.setOption outer failure | applyId=${applyId}`,
+            e?.message || e
         );
 
         return false;
     }
 }
 
-// =========================
-// Apply remembered language
-// =========================
+
+/* ============================================================
+ * Automatic subtitle application
+ * ============================================================
+ */
 
 function applyPreferredLanguage(reason) {
     if (!configRead(CONFIG_KEYS.ENABLED)) {
-        debugLog('apply skipped', 'feature disabled');
+        debugLog(`APPLY skipped | disabled | reason=${reason}`);
         return;
     }
 
@@ -346,20 +528,41 @@ function applyPreferredLanguage(reason) {
     const languageName = configRead(CONFIG_KEYS.NAME);
 
     if (!languageCode) {
-        debugLog('apply skipped', 'no remembered language');
+        debugLog(`APPLY skipped | no language code | reason=${reason}`);
         return;
     }
 
+    const applyId = ++applySequence;
+    const player = getCurrentPlayer();
+
     debugLog(
-        'APPLY START',
-        `language=${languageName || languageCode}, ` +
-        `code=${languageCode}, reason=${reason}`
+        `APPLY START | applyId=${applyId} | reason=${reason}`,
+        {
+            languageCode,
+            languageName,
+            videoId: getPlayerVideoId(player),
+            playerState: getPlayerStateSummary(player),
+        }
     );
 
     isInternalApply = true;
 
+    let setOptionResult = false;
+    let resolveResult;
+
     try {
-        tryPlayerSetOption(languageCode, languageName);
+        setOptionResult = tryPlayerSetOption(
+            languageCode,
+            languageName,
+            applyId
+        );
+
+        debugLog(
+            `APPLY setOption finished | applyId=${applyId}`,
+            {
+                setOptionResult,
+            }
+        );
 
         const command = {
             selectSubtitlesTrackCommand: {
@@ -371,306 +574,578 @@ function applyPreferredLanguage(reason) {
         };
 
         debugLog(
-            'resolveCommand internal',
-            safeString(command)
+            `APPLY resolveCommand payload | applyId=${applyId}`,
+            command
         );
 
-        resolveCommand(command);
+        try {
+            resolveResult = resolveCommand(command);
 
-        debugLog('APPLY END', 'resolveCommand returned');
-    } catch (error) {
+            debugLog(
+                `APPLY resolveCommand returned | applyId=${applyId}`,
+                resolveResult
+            );
+        } catch (e) {
+            debugWarn(
+                `APPLY resolveCommand threw | applyId=${applyId}`,
+                e?.message || e
+            );
+        }
+    } catch (e) {
         debugWarn(
-            'applyPreferredLanguage failed',
-            safeString(error)
+            `APPLY failed | applyId=${applyId}`,
+            e?.message || e
         );
     }
 
+    debugLog(
+        `APPLY END | applyId=${applyId}`,
+        {
+            setOptionResult,
+            resolveResult,
+        }
+    );
+
+    // Keep the original behavior:
+    // clear the internal flag on the next microtask.
     Promise.resolve().then(() => {
         isInternalApply = false;
 
         debugLog(
-            'internal flag cleared',
-            'isInternalApply=false'
+            `APPLY internal flag cleared | applyId=${applyId}`
         );
     });
 }
 
-// =========================
-// Main handler
-// =========================
+
+/* ============================================================
+ * Main handler
+ * ============================================================
+ */
 
 class SubtitlePersistenceHandler {
     #player = null;
     #lastVideoId = null;
+    #lastScheduledVideoId = null;
+    #retryTimers = [];
+    #resetReapplyCount = 0;
     #isPatched = false;
 
     constructor() {
-        debugLog('handler', 'created');
-
+        debugLog('SubtitlePersistenceHandler constructor');
         this.init();
     }
 
     init() {
-        debugLog('handler', 'initializing');
+        debugLog('Subtitle persistence initialization START');
 
         this.#startDOMCheck();
         this.#setupConfigListener();
         this.#patchResolveCommand();
+
+        debugLog('Subtitle persistence initialization END');
     }
 
     #getVideoId() {
-        if (!this.#player) return null;
-
-        try {
-            return this.#player.getVideoData?.()?.video_id || null;
-        } catch (error) {
-            debugWarn(
-                'getVideoId failed',
-                safeString(error)
-            );
-
-            return null;
-        }
-    }
-
-    #getPlayerState() {
-        if (!this.#player) {
-            return 'no-player';
-        }
-
-        try {
-            const stateObject =
-                this.#player.getPlayerStateObject?.();
-
-            if (stateObject) {
-                return safeString(stateObject, 250);
-            }
-
-            return String(
-                this.#player.getPlayerState?.()
-            );
-        } catch (error) {
-            return `state-error:${safeString(error, 150)}`;
-        }
+        return getPlayerVideoId(this.#player);
     }
 
     #isPlayerPlaying() {
         if (!this.#player) return false;
 
         try {
-            const stateObject =
-                this.#player.getPlayerStateObject?.();
+            const stateObject = this.#player.getPlayerStateObject?.();
 
-            if (
-                stateObject &&
-                typeof stateObject.isPlaying === 'boolean'
-            ) {
+            if (stateObject && typeof stateObject.isPlaying === 'boolean') {
                 return stateObject.isPlaying;
             }
 
-            return this.#player.getPlayerState?.() === 1;
-        } catch (error) {
+            const numericState = this.#player.getPlayerState?.();
+
+            // Numeric state 1 = playing on many YouTube players.
+            return numericState === 1;
+        } catch (e) {
             return false;
         }
     }
 
-    #updateVideoContext() {
-        const videoId = this.#getVideoId();
-
-        if (videoId !== this.#lastVideoId) {
-            debugLog(
-                'VIDEO CHANGE',
-                `old=${this.#lastVideoId || 'none'}, ` +
-                `new=${videoId || 'none'}`
-            );
-
-            this.#lastVideoId = videoId;
-        }
-
-        return videoId;
-    }
-
     #startDOMCheck() {
+        debugLog('DOM player check started | interval=1500ms');
+
         setInterval(() => {
-            const playerElement =
-                document.querySelector(SELECTORS.PLAYER);
+            const playerElement = getCurrentPlayer();
 
-            if (!playerElement) {
-                return;
-            }
+            if (playerElement && this.#player !== playerElement) {
+                const oldVideoId = getPlayerVideoId(this.#player);
+                const newVideoId = getPlayerVideoId(playerElement);
 
-            if (this.#player === playerElement) {
-                return;
-            }
-
-            if (this.#player) {
                 debugLog(
-                    'PLAYER CHANGE',
-                    'removing old event listeners'
+                    'PLAYER CHANGE detected',
+                    {
+                        oldVideoId,
+                        newVideoId,
+                    }
                 );
 
+                if (this.#player) {
+                    try {
+                        this.#player.removeEventListener(
+                            'onStateChange',
+                            this.#handleStateChange
+                        );
+
+                        this.#player.removeEventListener(
+                            'onPlaybackStartExternal',
+                            this.#handlePlaybackStart
+                        );
+
+                        this.#player.removeEventListener(
+                            'onApiChange',
+                            this.#handleApiChange
+                        );
+
+                        debugLog('Old player listeners removed');
+                    } catch (e) {
+                        debugWarn(
+                            'Old player listener removal failed',
+                            e?.message || e
+                        );
+                    }
+                }
+
+                this.#player = playerElement;
+
                 try {
-                    this.#player.removeEventListener(
+                    this.#player.addEventListener(
                         'onStateChange',
                         this.#handleStateChange
                     );
 
-                    this.#player.removeEventListener(
+                    this.#player.addEventListener(
                         'onPlaybackStartExternal',
                         this.#handlePlaybackStart
                     );
 
-                    this.#player.removeEventListener(
+                    this.#player.addEventListener(
                         'onApiChange',
                         this.#handleApiChange
                     );
-                } catch (error) {
+
+                    debugLog(
+                        'New player listeners installed',
+                        {
+                            videoId: newVideoId,
+                        }
+                    );
+                } catch (e) {
                     debugWarn(
-                        'removeEventListener failed',
-                        safeString(error)
+                        'New player listener installation failed',
+                        e?.message || e
                     );
                 }
+
+                logCaptionsOptions(
+                    this.#player,
+                    'player change'
+                );
+
+                // Catch up if the player already exists and is playing.
+                this.#handleStateChange();
             }
-
-            this.#player = playerElement;
-
-            debugLog(
-                'PLAYER FOUND',
-                `video=${this.#getVideoId() || 'none'}`
-            );
-
-            try {
-                this.#player.addEventListener(
-                    'onStateChange',
-                    this.#handleStateChange
-                );
-
-                this.#player.addEventListener(
-                    'onPlaybackStartExternal',
-                    this.#handlePlaybackStart
-                );
-
-                this.#player.addEventListener(
-                    'onApiChange',
-                    this.#handleApiChange
-                );
-
-                debugLog(
-                    'PLAYER EVENTS',
-                    'listeners registered'
-                );
-            } catch (error) {
-                debugWarn(
-                    'addEventListener failed',
-                    safeString(error)
-                );
-            }
-
-            this.#handleStateChange();
         }, 1500);
     }
 
+    #clearRetryTimers(reason = 'unspecified') {
+        const count = this.#retryTimers.length;
+
+        for (const timerId of this.#retryTimers) {
+            clearTimeout(timerId);
+        }
+
+        this.#retryTimers = [];
+
+        debugLog(
+            `Retry timers cleared | count=${count} | reason=${reason}`
+        );
+    }
+
+    #scheduleRetries(reason, videoId) {
+        if (!videoId) {
+            debugLog(
+                `Retry schedule skipped | no videoId | reason=${reason}`
+            );
+
+            return;
+        }
+
+        if (!configRead(CONFIG_KEYS.CODE)) {
+            debugLog(
+                `Retry schedule skipped | no language code | reason=${reason}`
+            );
+
+            return;
+        }
+
+        if (
+            videoId === this.#lastScheduledVideoId &&
+            this.#retryTimers.length > 0
+        ) {
+            debugLog(
+                `Retry schedule skipped | already scheduled | videoId=${videoId}`
+            );
+
+            return;
+        }
+
+        this.#clearRetryTimers('before new retry sequence');
+
+        this.#lastScheduledVideoId = videoId;
+
+        debugLog(
+            `RETRY SEQUENCE scheduled | videoId=${videoId} | reason=${reason}`,
+            RETRY_DELAYS_MS
+        );
+
+        RETRY_DELAYS_MS.forEach((delay, index) => {
+            const timerId = setTimeout(() => {
+                if (!configRead(CONFIG_KEYS.ENABLED)) {
+                    debugLog(
+                        `RETRY skipped | disabled | delay=${delay}ms`
+                    );
+
+                    return;
+                }
+
+                const currentVideoId = this.#getVideoId();
+
+                if (currentVideoId !== videoId) {
+                    debugLog(
+                        `RETRY skipped | video changed | expected=${videoId} | actual=${currentVideoId}`
+                    );
+
+                    return;
+                }
+
+                debugLog(
+                    `RETRY EXECUTE | index=${index + 1}/${RETRY_DELAYS_MS.length} | delay=${delay}ms | videoId=${videoId} | reason=${reason}`
+                );
+
+                applyPreferredLanguage(
+                    `retry +${delay}ms (${reason})`
+                );
+
+                if (index === RETRY_DELAYS_MS.length - 1) {
+                    this.#retryTimers = [];
+
+                    debugLog(
+                        `RETRY SEQUENCE finished | videoId=${videoId}`
+                    );
+                }
+            }, delay);
+
+            this.#retryTimers.push(timerId);
+
+            debugLog(
+                `RETRY timer created | index=${index + 1} | delay=${delay}ms | videoId=${videoId}`
+            );
+        });
+    }
+
+    #updateVideoContext(videoId) {
+        if (videoId && videoId !== this.#lastVideoId) {
+            debugLog(
+                'VIDEO CONTEXT changed',
+                {
+                    oldVideoId: this.#lastVideoId,
+                    newVideoId: videoId,
+                }
+            );
+
+            this.#lastVideoId = videoId;
+            this.#lastScheduledVideoId = null;
+            this.#resetReapplyCount = 0;
+
+            this.#clearRetryTimers('video context changed');
+        }
+    }
+
     #handleStateChange = () => {
-        const videoId = this.#updateVideoContext();
+        const videoId = this.#getVideoId();
+        const playing = this.#isPlayerPlaying();
 
         debugLog(
             'EVENT onStateChange',
-            `video=${videoId || 'none'}, ` +
-            `playing=${this.#isPlayerPlaying()}, ` +
-            `state=${this.#getPlayerState()}`
+            {
+                videoId,
+                playing,
+                state: getPlayerStateObject(this.#player),
+            }
         );
+
+        if (!configRead(CONFIG_KEYS.ENABLED)) {
+            debugLog('onStateChange ignored | persistence disabled');
+            return;
+        }
+
+        if (!videoId) {
+            debugLog('onStateChange ignored | no videoId');
+            return;
+        }
+
+        this.#updateVideoContext(videoId);
+
+        if (playing) {
+            this.#scheduleRetries(
+                'stateChange:isPlaying',
+                videoId
+            );
+        }
     };
 
     #handlePlaybackStart = () => {
-        const videoId = this.#updateVideoContext();
+        const videoId = this.#getVideoId();
+        const playing = this.#isPlayerPlaying();
 
         debugLog(
             'EVENT onPlaybackStartExternal',
-            `video=${videoId || 'none'}, ` +
-            `playing=${this.#isPlayerPlaying()}`
+            {
+                videoId,
+                playing,
+                state: getPlayerStateObject(this.#player),
+            }
+        );
+
+        if (!configRead(CONFIG_KEYS.ENABLED)) {
+            debugLog(
+                'onPlaybackStartExternal ignored | persistence disabled'
+            );
+
+            return;
+        }
+
+        if (!videoId) {
+            debugLog(
+                'onPlaybackStartExternal ignored | no videoId'
+            );
+
+            return;
+        }
+
+        this.#updateVideoContext(videoId);
+
+        this.#scheduleRetries(
+            'playbackStartExternal',
+            videoId
         );
     };
 
     #handleApiChange = () => {
-        const videoId = this.#updateVideoContext();
+        const videoId = this.#getVideoId();
 
         debugLog(
             'EVENT onApiChange',
-            `video=${videoId || 'none'}`
+            {
+                videoId,
+                playing: this.#isPlayerPlaying(),
+            }
         );
 
-        if (!this.#player) {
+        logCaptionsOptions(
+            this.#player,
+            'onApiChange'
+        );
+
+        if (!configRead(CONFIG_KEYS.ENABLED)) {
+            debugLog('onApiChange ignored | persistence disabled');
             return;
         }
 
-        try {
-            const captionsModule =
-                this.#player.getOptions?.('captions');
-
-            debugLog(
-                'captions options',
-                safeString(captionsModule, 350)
-            );
-        } catch (error) {
-            debugWarn(
-                'getOptions captions failed',
-                safeString(error)
-            );
+        if (!configRead(CONFIG_KEYS.CODE)) {
+            debugLog('onApiChange ignored | no language code');
+            return;
         }
+
+        if (!videoId) {
+            debugLog('onApiChange ignored | no videoId');
+            return;
+        }
+
+        this.#updateVideoContext(videoId);
+
+        // Original behavior:
+        // apply once when the captions module becomes available.
+        applyPreferredLanguage('onApiChange');
     };
+
+    #onPlayerResetToNonTranslation() {
+        if (!configRead(CONFIG_KEYS.ENABLED)) {
+            debugLog(
+                'Player reset ignored | persistence disabled'
+            );
+
+            return;
+        }
+
+        if (!configRead(CONFIG_KEYS.CODE)) {
+            debugLog(
+                'Player reset ignored | no language code'
+            );
+
+            return;
+        }
+
+        if (isInternalApply) {
+            debugLog(
+                'Player reset ignored | internal apply is active'
+            );
+
+            return;
+        }
+
+        const videoId = this.#getVideoId();
+
+        if (!videoId) {
+            debugLog(
+                'Player reset ignored | no videoId'
+            );
+
+            return;
+        }
+
+        if (this.#resetReapplyCount >= MAX_RESET_REAPPLY) {
+            debugWarn(
+                'Player reset ignored | maximum re-apply count reached',
+                {
+                    videoId,
+                    count: this.#resetReapplyCount,
+                    max: MAX_RESET_REAPPLY,
+                }
+            );
+
+            return;
+        }
+
+        this.#resetReapplyCount += 1;
+
+        debugWarn(
+            'PLAYER RESET TO NON-TRANSLATION',
+            {
+                videoId,
+                count: this.#resetReapplyCount,
+                max: MAX_RESET_REAPPLY,
+            }
+        );
+
+        const countAtScheduleTime = this.#resetReapplyCount;
+
+        setTimeout(() => {
+            debugLog(
+                `RESET RE-APPLY timer executed | count=${countAtScheduleTime} | videoId=${this.#getVideoId()}`
+            );
+
+            applyPreferredLanguage(
+                `player reset #${countAtScheduleTime}`
+            );
+        }, 350);
+
+        debugLog(
+            `RESET RE-APPLY timer created | delay=350ms | count=${countAtScheduleTime}`
+        );
+    }
 
     #setupConfigListener() {
         configChangeEmitter.addEventListener(
             'configChange',
-            (event) => {
-                const detail = event.detail || {};
+            (ev) => {
+                const detail = ev.detail || {};
                 const key = detail.key;
+                const isEnabled = configRead(CONFIG_KEYS.ENABLED);
 
                 debugLog(
                     'CONFIG CHANGE',
-                    `key=${key || 'unknown'}`
+                    {
+                        key,
+                        enabled: isEnabled,
+                        code: configRead(CONFIG_KEYS.CODE),
+                        name: configRead(CONFIG_KEYS.NAME),
+                    }
                 );
+
+                if (!isEnabled) {
+                    this.#clearRetryTimers(
+                        'configuration disabled'
+                    );
+
+                    this.#lastScheduledVideoId = null;
+
+                    return;
+                }
 
                 if (
                     key === CONFIG_KEYS.ENABLED ||
                     key === CONFIG_KEYS.CODE ||
                     key === CONFIG_KEYS.NAME
                 ) {
-                    debugLog(
-                        'CONFIG VALUES',
-                        `enabled=${configRead(CONFIG_KEYS.ENABLED)}, ` +
-                        `code=${configRead(CONFIG_KEYS.CODE) || 'none'}, ` +
-                        `name=${configRead(CONFIG_KEYS.NAME) || 'none'}`
+                    this.#lastScheduledVideoId = null;
+                    this.#resetReapplyCount = 0;
+
+                    this.#clearRetryTimers(
+                        `configuration changed: ${key}`
                     );
 
-                    if (configRead(CONFIG_KEYS.ENABLED)) {
-                        applyPreferredLanguage(
-                            `configChange:${key}`
-                        );
+                    const videoId = this.#getVideoId();
+
+                    debugLog(
+                        'CONFIG APPLY DECISION',
+                        {
+                            key,
+                            videoId,
+                            playing: this.#isPlayerPlaying(),
+                        }
+                    );
+
+                    if (videoId) {
+                        if (this.#isPlayerPlaying()) {
+                            this.#scheduleRetries(
+                                `configChanged:${key}`,
+                                videoId
+                            );
+                        } else {
+                            applyPreferredLanguage(
+                                `configChanged:${key} (not playing)`
+                            );
+                        }
                     }
                 }
             }
         );
+
+        debugLog('Config listener installed');
     }
 
     #patchResolveCommand() {
         const interval = setInterval(() => {
-            if (this.#isPatched || !window._yttv) {
+            if (this.#isPatched) {
+                clearInterval(interval);
                 return;
             }
 
-            const yttvEntry = Object.values(window._yttv).find(
+            if (!window._yttv) {
+                return;
+            }
+
+            const yttvInstance = Object.values(window._yttv).find(
                 (obj) =>
                     obj &&
                     obj.instance &&
                     typeof obj.instance.resolveCommand === 'function'
             );
 
-            if (!yttvEntry) {
+            if (!yttvInstance) {
                 return;
             }
 
-            const instance = yttvEntry.instance;
+            const instance = yttvInstance.instance;
 
             if (
                 instance.resolveCommand
@@ -680,78 +1155,141 @@ class SubtitlePersistenceHandler {
                 clearInterval(interval);
 
                 debugLog(
-                    'resolveCommand',
-                    'already patched'
+                    'resolveCommand already patched by this mod'
                 );
 
                 return;
             }
 
-            const originalResolveCommand =
-                instance.resolveCommand;
-
+            const originalResolveCommand = instance.resolveCommand;
             const self = this;
 
-            instance.resolveCommand = function (cmd, _) {
-                try {
-                    if (hasSelectSubtitlesTrackCommand(cmd)) {
-                        logSubtitleCommand(
-                            'resolveCommand',
-                            cmd
-                        );
+            instance.resolveCommand = function(cmd, _) {
+                const hasSubtitleCommand =
+                    hasSelectSubtitlesTrackCommand(cmd);
 
-                        if (
-                            configRead(CONFIG_KEYS.ENABLED) &&
-                            !isInternalApply
-                        ) {
-                            const translationLanguage =
-                                extractTranslationCommand(cmd);
+                const commandType =
+                    getSubtitleCommandType(cmd);
 
-                            if (translationLanguage) {
-                                const languageCode =
-                                    translationLanguage.languageCode;
+                if (hasSubtitleCommand) {
+                    logSubtitleCommand(
+                        'resolveCommand BEFORE',
+                        cmd
+                    );
 
-                                const languageName =
-                                    translationLanguage.languageName ||
-                                    languageCode;
-
-                                if (languageCode) {
-                                    debugLog(
-                                        'REMEMBER LANGUAGE',
-                                        `code=${languageCode}, ` +
-                                        `name=${languageName}`
-                                    );
-
-                                    configWrite(
-                                        CONFIG_KEYS.CODE,
-                                        languageCode
-                                    );
-
-                                    configWrite(
-                                        CONFIG_KEYS.NAME,
-                                        languageName
-                                    );
-                                }
-                            } else {
-                                debugLog(
-                                    'NON-TRANSLATION COMMAND',
-                                    'not automatically reapplied'
-                                );
-                            }
+                    debugLog(
+                        'resolveCommand classification',
+                        {
+                            commandType,
+                            internal: isInternalApply,
+                            videoId: self.#getVideoId(),
                         }
-                    }
-                } catch (error) {
-                    debugWarn(
-                        'resolveCommand diagnostic failed',
-                        safeString(error)
                     );
                 }
 
-                // Always allow the original YouTube TV command.
-                return originalResolveCommand.apply(
-                    this,
-                    arguments
-                );
+                let result;
+
+                try {
+                    result = originalResolveCommand.apply(
+                        this,
+                        arguments
+                    );
+
+                    if (hasSubtitleCommand) {
+                        debugLog(
+                            'resolveCommand ORIGINAL returned',
+                            result
+                        );
+                    }
+                } catch (e) {
+                    if (hasSubtitleCommand) {
+                        debugWarn(
+                            'resolveCommand ORIGINAL threw',
+                            e?.message || e
+                        );
+                    }
+
+                    throw e;
+                }
+
+                if (
+                    configRead(CONFIG_KEYS.ENABLED) &&
+                    hasSubtitleCommand
+                ) {
+                    const translationLanguage =
+                        extractTranslationCommand(cmd);
+
+                    if (translationLanguage && !isInternalApply) {
+                        const {
+                            languageCode,
+                            languageName,
+                        } = translationLanguage;
+
+                        debugLog(
+                            'EXTERNAL TRANSLATION COMMAND',
+                            {
+                                languageCode,
+                                languageName,
+                                videoId: self.#getVideoId(),
+                            }
+                        );
+
+                        if (
+                            languageCode &&
+                            languageCode !== configRead(CONFIG_KEYS.CODE)
+                        ) {
+                            debugLog(
+                                'REMEMBERING NEW USER LANGUAGE',
+                                {
+                                    oldCode: configRead(CONFIG_KEYS.CODE),
+                                    oldName: configRead(CONFIG_KEYS.NAME),
+                                    newCode: languageCode,
+                                    newName: languageName,
+                                }
+                            );
+
+                            configWrite(
+                                CONFIG_KEYS.CODE,
+                                languageCode
+                            );
+
+                            configWrite(
+                                CONFIG_KEYS.NAME,
+                                languageName || languageCode
+                            );
+                        } else {
+                            debugLog(
+                                'External translation language equals saved language'
+                            );
+                        }
+                    } else if (
+                        !isInternalApply &&
+                        isNonTranslationSubtitleCommand(cmd)
+                    ) {
+                        debugWarn(
+                            'EXTERNAL NON-TRANSLATION COMMAND',
+                            {
+                                videoId: self.#getVideoId(),
+                                message: 'Player may have reset subtitles',
+                            }
+                        );
+
+                        self.#onPlayerResetToNonTranslation();
+                    } else if (isInternalApply) {
+                        debugLog(
+                            'SUBTITLE COMMAND ignored for user-memory logic | internal apply'
+                        );
+                    }
+                }
+
+                if (hasSubtitleCommand) {
+                    logSubtitleCommand(
+                        'resolveCommand AFTER',
+                        cmd
+                    );
+                }
+
+                return result;
             };
 
             instance.resolveCommand
@@ -761,30 +1299,52 @@ class SubtitlePersistenceHandler {
             clearInterval(interval);
 
             debugLog(
-                'PATCH READY',
-                'resolveCommand patch installed'
+                'resolveCommand patch OK'
             );
         }, 500);
+
+        debugLog(
+            'resolveCommand patch watcher started | interval=500ms'
+        );
     }
 }
 
-// =========================
-// Startup
-// =========================
+
+/* ============================================================
+ * Start
+ * ============================================================
+ */
 
 try {
     ensureDebugPanel();
 
     debugLog(
-        'STARTUP',
-        'subtitle persistence diagnostics enabled'
+        'Subtitle Persistence diagnostic version starting'
+    );
+
+    debugLog(
+        'Configuration at startup',
+        {
+            enabled: configRead(CONFIG_KEYS.ENABLED),
+            languageCode: configRead(CONFIG_KEYS.CODE),
+            languageName: configRead(CONFIG_KEYS.NAME),
+        }
     );
 
     window.subtitlePersistenceHandler =
         new SubtitlePersistenceHandler();
-} catch (error) {
+
+    debugLog(
+        'Subtitle Persistence diagnostic version started'
+    );
+} catch (e) {
     console.error(
-        '[Subtitle Persistence] startup failed:',
-        error
+        '[Subtitle Persistence] Startup failed:',
+        e
+    );
+
+    debugWarn(
+        'STARTUP FAILED',
+        e?.message || e
     );
 }
