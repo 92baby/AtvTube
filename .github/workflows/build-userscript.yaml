@@ -1,0 +1,63 @@
+name: Build userScript.js
+
+# 只构建给 TizenTubeCobalt (Android/Cobalt) 用的 dist/userScript.js
+# 不涉及任何 Tizen 证书 / tizenjs / .wgt 打包，跟官方 build-release.yaml 是两回事
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mods/**'
+  workflow_dispatch: {}   # 也支持手动点击运行
+
+# 需要写权限才能 push 回仓库
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install deps
+        working-directory: mods
+        run: npm install
+
+      - name: Build userScript.js
+        working-directory: mods
+        run: npm run build
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: userScript
+          path: dist/userScript.js
+
+      - name: Commit built userScript.js
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # dist/ 在 .gitignore 里，必须 -f 强制加入版本控制
+          git add -f dist/userScript.js
+
+          # 没有变化就跳过 commit，避免空提交报错
+          if git diff --staged --quiet; then
+            echo "No changes to dist/userScript.js, skipping commit."
+            exit 0
+          fi
+
+          git commit -m "chore: rebuild userScript.js [skip ci]"
+
+          # 以防这段时间 main 分支有新提交，pull --rebase 避免冲突
+          git pull --rebase origin main
+          git push origin HEAD:main
