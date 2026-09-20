@@ -104,8 +104,22 @@ function Modal(header, content, id, update) {
 }
 
 function showModal(header, content, id, update) {
-    const modalCmd = Modal(header, content, id, update);
+    // Avoid in-place updateAction on Tizen/Cobalt: it can leave visual artifacts
+    // (overlapping text, black blocks) on some TVs. Close then reopen instead.
+    if (update) {
+        resolveCommand({
+            signalAction: {
+                signal: 'POPUP_BACK'
+            }
+        });
+        const modalCmd = Modal(header, content, id, false);
+        setTimeout(() => {
+            resolveCommand(modalCmd);
+        }, 50);
+        return;
+    }
 
+    const modalCmd = Modal(header, content, id, update);
     resolveCommand(modalCmd);
 }
 
