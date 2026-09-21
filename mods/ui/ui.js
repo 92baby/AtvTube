@@ -39,7 +39,7 @@ const keys = {
 // Menu key toggle — 浮层写法对齐已验证成功的 debugOverlay.js
 // 测通后把 SHOW_TT_OVERLAY 改为 false
 // ---------------------------------------------------------------------------
-const SHOW_TT_OVERLAY = true;
+const SHOW_TT_OVERLAY = false;
 
 const KNOWN_NAV_KEYS = new Set([13, 37, 38, 39, 40, 27]);
 let lastKeyCode = null;
