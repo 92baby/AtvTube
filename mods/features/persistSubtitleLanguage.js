@@ -84,6 +84,40 @@ function isNonTranslationSubtitleCommand(cmd) {
     return false;
 }
 
+// Ask the player what caption track is actually active right now,
+// instead of inferring success from "the earlier call didn't throw"
+// (that inference is exactly what caused the regression where
+// persistence silently stopped working — setOption not throwing did
+// not mean it actually switched the track). getOption is the
+// documented counterpart to setOption; if this player doesn't expose
+// it, or the shape doesn't match what we expect, we simply can't
+// verify and the caller falls back to its previous (safe) behaviour
+// of firing the next scheduled attempt anyway.
+function getActiveTranslationLanguageCode() {
+    const player = getCurrentPlayer();
+
+    if (!player || typeof player.getOption !== 'function') {
+        return null;
+    }
+
+    try {
+        const track = player.getOption('captions', 'track');
+
+        if (!track) {
+            return null;
+        }
+
+        return (
+            (track.translationLanguage &&
+                track.translationLanguage.languageCode) ||
+            track.languageCode ||
+            null
+        );
+    } catch (e) {
+        return null;
+    }
+}
+
 function tryPlayerSetOption(languageCode, languageName) {
     const player = getCurrentPlayer();
 
@@ -151,34 +185,25 @@ function applyPreferredLanguage() {
     isInternalApply = true;
 
     try {
-        // Only fall back to resolveCommand (the "simulate a menu
-        // click" path) when the lower-level player API isn't there
-        // or throws, instead of always firing both - track selection
-        // isn't free (fetch + parse + re-render), so doing it twice
-        // per attempt is wasted work on this hardware.
-        const viaSetOption = tryPlayerSetOption(
+        tryPlayerSetOption(
             languageCode,
             languageName
         );
 
-        if (!viaSetOption) {
-            resolveCommand({
-                selectSubtitlesTrackCommand: {
-                    translationLanguage: {
-                        languageCode,
-                        languageName: languageName || languageCode,
-                    },
+        resolveCommand({
+            selectSubtitlesTrackCommand: {
+                translationLanguage: {
+                    languageCode,
+                    languageName: languageName || languageCode,
                 },
-            });
-        }
+            },
+        });
     } catch (e) {
     }
 
     Promise.resolve().then(() => {
         isInternalApply = false;
     });
-
-    return applied;
 }
 
 class SubtitlePersistenceHandler {
@@ -266,19 +291,34 @@ class SubtitlePersistenceHandler {
 
         this.#scheduledVideoId = videoId;
 
-        const timerId = setTimeout(() => {
-            if (!configRead(CONFIG_KEYS.ENABLED)) {
-                return;
-            }
+        for (const delay of [3000, 6000]) {
+            const timerId = setTimeout(() => {
+                if (!configRead(CONFIG_KEYS.ENABLED)) {
+                    return;
+                }
 
-            if (this.#getVideoId() !== videoId) {
-                return;
-            }
+                if (this.#getVideoId() !== videoId) {
+                    return;
+                }
 
-            applyPreferredLanguage();
-        }, 3000);
+                // Only skip when we can positively confirm the
+                // target language is already active. If the player
+                // doesn't expose getOption, or the returned track
+                // doesn't match, this falls through and fires again —
+                // same as before, just with a real check added on
+                // top rather than replacing the safety net.
+                const target = configRead(CONFIG_KEYS.CODE);
+                const active = getActiveTranslationLanguageCode();
 
-        this.#timers.push(timerId);
+                if (target && active === target) {
+                    return;
+                }
+
+                applyPreferredLanguage();
+            }, delay);
+
+            this.#timers.push(timerId);
+        }
     }
 
     #updateVideoContext(videoId) {
