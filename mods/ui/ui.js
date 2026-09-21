@@ -35,6 +35,45 @@ const keys = {
   48: 0
 };
 
+const KNOWN_NAV_KEYS = new Set([13, 37, 38, 39, 40, 27]);
+let lastKeyCode = null;
+let toggleKeyCode = null;
+let controlsWasVisible = false;
+let watchDefaultObserved = null;
+
+function isControlsVisible() {
+  const el = document.querySelector('ytlr-watch-default');
+  return !!el && el.getAttribute('hybridnavfocusable') === 'false';
+}
+
+function isOnWatchPage() {
+  try {
+    const url = new URL(location.hash.substring(1), location.href);
+    return /[?&]v=/.test(url.search);
+  } catch (e) {
+    return false;
+  }
+}
+
+function attachControlsObserver() {
+  const el = document.querySelector('ytlr-watch-default');
+  if (el === watchDefaultObserved) return;
+  watchDefaultObserved = el;
+  if (!el) return;
+
+  controlsWasVisible = isControlsVisible();
+
+  new MutationObserver(() => {
+    const nowVisible = isControlsVisible();
+    if (!controlsWasVisible && nowVisible && isOnWatchPage() && lastKeyCode !== null && !KNOWN_NAV_KEYS.has(lastKeyCode)) {
+      toggleKeyCode = lastKeyCode;
+    }
+    controlsWasVisible = nowVisible;
+  }).observe(el, { attributes: true, attributeFilter: ['hybridnavfocusable'] });
+}
+
+setInterval(attachControlsObserver, 500);
+
 function execute_once_dom_loaded() {
 
   // Add CSS to head.
@@ -143,6 +182,8 @@ function execute_once_dom_loaded() {
   } catch (e) { }
 
   var eventHandler = (evt) => {
+    lastKeyCode = evt.keyCode;
+
     // We handle key events ourselves.
     console.info(
       'Key event:',
@@ -211,6 +252,17 @@ function execute_once_dom_loaded() {
           ytlrPlayer.style.setProperty('background-color', 'rgb(0, 0, 0)');
           pipToFullscreen();
         }
+      }
+    } else if (toggleKeyCode !== null && evt.keyCode === toggleKeyCode) {
+      if (evt.type === 'keydown' && isOnWatchPage() && isControlsVisible()) {
+        evt.preventDefault();
+        evt.stopPropagation();
+
+        const kE = document.createEvent('Event');
+        kE.initEvent('keydown', true, true);
+        kE.keyCode = 27;
+        kE.which = 27;
+        document.dispatchEvent(kE);
       }
     };
     return true;
