@@ -151,29 +151,34 @@ function applyPreferredLanguage() {
     isInternalApply = true;
 
     try {
+        // Only fall back to resolveCommand (the "simulate a menu
+        // click" path) when the lower-level player API isn't there
+        // or throws, instead of always firing both - track selection
+        // isn't free (fetch + parse + re-render), so doing it twice
+        // per attempt is wasted work on this hardware.
         const viaSetOption = tryPlayerSetOption(
             languageCode,
             languageName
         );
 
-        console.log(
-            `[Subtitle Persistence] Applying ${languageCode} (setOption: ${viaSetOption ? 'ok' : 'unavailable/failed'})`
-        );
-
-        resolveCommand({
-            selectSubtitlesTrackCommand: {
-                translationLanguage: {
-                    languageCode,
-                    languageName: languageName || languageCode,
+        if (!viaSetOption) {
+            resolveCommand({
+                selectSubtitlesTrackCommand: {
+                    translationLanguage: {
+                        languageCode,
+                        languageName: languageName || languageCode,
+                    },
                 },
-            },
-        });
+            });
+        }
     } catch (e) {
     }
 
     Promise.resolve().then(() => {
         isInternalApply = false;
     });
+
+    return applied;
 }
 
 class SubtitlePersistenceHandler {
@@ -261,21 +266,19 @@ class SubtitlePersistenceHandler {
 
         this.#scheduledVideoId = videoId;
 
-        for (const delay of [5000, 10000]) {
-            const timerId = setTimeout(() => {
-                if (!configRead(CONFIG_KEYS.ENABLED)) {
-                    return;
-                }
+        const timerId = setTimeout(() => {
+            if (!configRead(CONFIG_KEYS.ENABLED)) {
+                return;
+            }
 
-                if (this.#getVideoId() !== videoId) {
-                    return;
-                }
+            if (this.#getVideoId() !== videoId) {
+                return;
+            }
 
-                applyPreferredLanguage();
-            }, delay);
+            applyPreferredLanguage();
+        }, 3000);
 
-            this.#timers.push(timerId);
-        }
+        this.#timers.push(timerId);
     }
 
     #updateVideoContext(videoId) {
@@ -467,10 +470,6 @@ class SubtitlePersistenceHandler {
                         } = translationLanguage;
 
                         if (languageCode) {
-                            console.log(
-                                `[Subtitle Persistence] Remembering manually picked language: ${languageCode}`
-                            );
-
                             configWrite(
                                 CONFIG_KEYS.CODE,
                                 languageCode
@@ -494,10 +493,6 @@ class SubtitlePersistenceHandler {
                         const videoId = self.#getVideoId();
 
                         if (videoId) {
-                            console.log(
-                                `[Subtitle Persistence] Manual override for this video (${videoId}); pausing auto-apply until the next video`
-                            );
-
                             self.#overriddenVideoId = videoId;
                             self.#scheduledVideoId = null;
                             self.#clearTimers();
