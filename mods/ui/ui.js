@@ -35,6 +35,10 @@ const keys = {
   48: 0
 };
 
+// ---------------------------------------------------------------------------
+// Menu key toggle (Android TV / Cobalt)
+// 独立于下方大 eventHandler：模块加载即注册，行为与已验证的 debugOverlay 一致。
+// ---------------------------------------------------------------------------
 const KNOWN_NAV_KEYS = new Set([13, 37, 38, 39, 40, 27]);
 let lastKeyCode = null;
 let toggleKeyCode = null;
@@ -65,14 +69,49 @@ function attachControlsObserver() {
 
   new MutationObserver(() => {
     const nowVisible = isControlsVisible();
-    if (!controlsWasVisible && nowVisible && isOnWatchPage() && lastKeyCode !== null && !KNOWN_NAV_KEYS.has(lastKeyCode)) {
+    if (
+      !controlsWasVisible &&
+      nowVisible &&
+      isOnWatchPage() &&
+      lastKeyCode !== null &&
+      !KNOWN_NAV_KEYS.has(lastKeyCode)
+    ) {
       toggleKeyCode = lastKeyCode;
+      console.info('[TT] learned toggle key =', toggleKeyCode);
     }
     controlsWasVisible = nowVisible;
   }).observe(el, { attributes: true, attributeFilter: ['hybridnavfocusable'] });
 }
 
 setInterval(attachControlsObserver, 500);
+
+function menuToggleKeyHandler(evt) {
+  lastKeyCode = evt.keyCode;
+
+  if (toggleKeyCode === null || evt.keyCode !== toggleKeyCode) return;
+  if (!isOnWatchPage() || !isControlsVisible()) return;
+
+  // keydown / keypress / keyup 全部拦截，避免默认行为把控制条重新打开
+  evt.preventDefault();
+  evt.stopPropagation();
+  if (typeof evt.stopImmediatePropagation === 'function') {
+    evt.stopImmediatePropagation();
+  }
+
+  if (evt.type === 'keydown') {
+    console.info('[TT] menu toggle → synthetic Back (key=' + toggleKeyCode + ')');
+    const kE = document.createEvent('Event');
+    kE.initEvent('keydown', true, true);
+    kE.keyCode = 27;
+    kE.which = 27;
+    document.dispatchEvent(kE);
+  }
+}
+
+document.addEventListener('keydown', menuToggleKeyHandler, true);
+document.addEventListener('keypress', menuToggleKeyHandler, true);
+document.addEventListener('keyup', menuToggleKeyHandler, true);
+// ---------------------------------------------------------------------------
 
 function execute_once_dom_loaded() {
 
@@ -182,8 +221,6 @@ function execute_once_dom_loaded() {
   } catch (e) { }
 
   var eventHandler = (evt) => {
-    lastKeyCode = evt.keyCode;
-
     // We handle key events ourselves.
     console.info(
       'Key event:',
@@ -253,18 +290,8 @@ function execute_once_dom_loaded() {
           pipToFullscreen();
         }
       }
-    } else if (toggleKeyCode !== null && evt.keyCode === toggleKeyCode) {
-      if (evt.type === 'keydown' && isOnWatchPage() && isControlsVisible()) {
-        evt.preventDefault();
-        evt.stopPropagation();
-
-        const kE = document.createEvent('Event');
-        kE.initEvent('keydown', true, true);
-        kE.keyCode = 27;
-        kE.which = 27;
-        document.dispatchEvent(kE);
-      }
-    };
+    }
+    // 菜单键开关控制条已移至模块顶层 menuToggleKeyHandler，此处不再处理
     return true;
   }
 
