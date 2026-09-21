@@ -36,48 +36,52 @@ const keys = {
 };
 
 // ---------------------------------------------------------------------------
-// Menu key toggle + 电视左上角调试浮层
-// 确认功能正常后，把 SHOW_TT_OVERLAY 改成 false 即可关掉浮层
+// Menu key toggle — 浮层写法对齐已验证成功的 debugOverlay.js
+// 测通后把 SHOW_TT_OVERLAY 改为 false
 // ---------------------------------------------------------------------------
 const SHOW_TT_OVERLAY = true;
 
 const KNOWN_NAV_KEYS = new Set([13, 37, 38, 39, 40, 27]);
 let lastKeyCode = null;
 let toggleKeyCode = null;
-let controlsWasVisible = false;
-let watchDefaultObserved = null;
+let wasVisible = false;
+let observedEl = null;
 
-let ttOverlayEl = null;
-const ttOverlayLines = [];
+// 与 debugOverlay 相同：先建节点，再尽量挂到 body
+const box = document.createElement('div');
+box.style.position = 'fixed';
+box.style.top = '0';
+box.style.left = '0';
+box.style.zIndex = '2147483647';
+box.style.background = 'rgba(0,0,0,0.8)';
+box.style.color = '#0f0';
+box.style.font = '20px monospace';
+box.style.padding = '8px';
+box.style.maxWidth = '90vw';
+box.style.whiteSpace = 'pre-wrap';
+box.style.pointerEvents = 'none';
+if (!SHOW_TT_OVERLAY) {
+  box.style.display = 'none';
+}
 
-function ttLog(line) {
+(function mountBox() {
   if (!SHOW_TT_OVERLAY) return;
-  if (!ttOverlayEl) {
-    ttOverlayEl = document.createElement('div');
-    ttOverlayEl.id = 'tt-menu-debug';
-    ttOverlayEl.style.cssText = [
-      'position:fixed',
-      'top:0',
-      'left:0',
-      'z-index:2147483647',
-      'background:rgba(0,0,0,0.85)',
-      'color:#0f0',
-      'font:18px/1.35 monospace',
-      'padding:8px',
-      'max-width:92vw',
-      'white-space:pre-wrap',
-      'pointer-events:none',
-    ].join(';');
-    const mount = () => {
-      (document.body || document.documentElement).appendChild(ttOverlayEl);
-    };
-    if (document.body) mount();
-    else document.addEventListener('DOMContentLoaded', mount, { once: true });
+  if (document.body) {
+    if (!box.parentNode) document.body.appendChild(box);
+    return;
   }
-  const t = new Date().toISOString().slice(11, 19);
-  ttOverlayLines.push(t + '  ' + line);
-  if (ttOverlayLines.length > 14) ttOverlayLines.shift();
-  if (ttOverlayEl) ttOverlayEl.textContent = ttOverlayLines.join('\n');
+  setTimeout(mountBox, 100);
+})();
+
+const lines = [];
+function log(line) {
+  if (!SHOW_TT_OVERLAY) return;
+  if (document.body && !box.parentNode) {
+    document.body.appendChild(box);
+  }
+  lines.push(`${new Date().toISOString().slice(11, 19)}  ${line}`);
+  if (lines.length > 14) lines.shift();
+  box.textContent = lines.join('\n');
 }
 
 function isControlsVisible() {
@@ -94,81 +98,101 @@ function isOnWatchPage() {
   }
 }
 
-function attachControlsObserver() {
+function attachObserver() {
   const el = document.querySelector('ytlr-watch-default');
-  if (el === watchDefaultObserved) return;
-  watchDefaultObserved = el;
+  if (el === observedEl) return;
+  observedEl = el;
   if (!el) return;
 
-  controlsWasVisible = isControlsVisible();
-  ttLog('observer on ytlr-watch-default');
+  wasVisible = isControlsVisible();
+  log('attach observer to ytlr-watch-default');
 
   new MutationObserver(() => {
     const nowVisible = isControlsVisible();
-    if (nowVisible !== controlsWasVisible) {
-      ttLog(
-        'controls=' +
-          nowVisible +
-          ' key=' +
-          lastKeyCode +
-          ' watch=' +
-          isOnWatchPage()
+    if (nowVisible !== wasVisible) {
+      log(
+        `controls visible: ${nowVisible}  (key=${lastKeyCode}, onWatchPage=${isOnWatchPage()})`
       );
     }
     if (
-      !controlsWasVisible &&
+      !wasVisible &&
       nowVisible &&
       isOnWatchPage() &&
       lastKeyCode !== null &&
       !KNOWN_NAV_KEYS.has(lastKeyCode)
     ) {
-      toggleKeyCode = lastKeyCode;
-      ttLog('LEARNED toggle key = ' + toggleKeyCode);
+      if (toggleKeyCode !== lastKeyCode) {
+        toggleKeyCode = lastKeyCode;
+        log(`learned toggle key = ${toggleKeyCode}`);
+      }
     }
-    controlsWasVisible = nowVisible;
+    wasVisible = nowVisible;
   }).observe(el, { attributes: true, attributeFilter: ['hybridnavfocusable'] });
 }
 
-setInterval(attachControlsObserver, 500);
+setInterval(attachObserver, 500);
 
-function menuToggleKeyHandler(evt) {
-  lastKeyCode = evt.keyCode;
+// 与 debugOverlay 一致：主要依赖 keydown；为防默认行为，press/up 在关条时也拦
+document.addEventListener(
+  'keydown',
+  (evt) => {
+    lastKeyCode = evt.keyCode;
+    log(`key: ${evt.keyCode}`);
+    log(`hash: ${location.hash}  onWatchPage: ${isOnWatchPage()}`);
 
-  if (evt.type === 'keydown') {
-    ttLog(
-      'key=' +
-        evt.keyCode +
-        ' toggle=' +
-        toggleKeyCode +
-        ' ctrl=' +
-        isControlsVisible() +
-        ' watch=' +
-        isOnWatchPage()
-    );
-  }
+    if (
+      toggleKeyCode !== null &&
+      evt.keyCode === toggleKeyCode &&
+      isOnWatchPage() &&
+      isControlsVisible()
+    ) {
+      evt.preventDefault();
+      evt.stopPropagation();
+      log(`>>> sending synthetic Back (toggle key ${toggleKeyCode})`);
 
-  if (toggleKeyCode === null || evt.keyCode !== toggleKeyCode) return;
-  if (!isOnWatchPage() || !isControlsVisible()) return;
+      const kE = document.createEvent('Event');
+      kE.initEvent('keydown', true, true);
+      kE.keyCode = 27;
+      kE.which = 27;
+      document.dispatchEvent(kE);
+    }
+  },
+  true
+);
 
-  evt.preventDefault();
-  evt.stopPropagation();
-  if (typeof evt.stopImmediatePropagation === 'function') {
-    evt.stopImmediatePropagation();
-  }
+document.addEventListener(
+  'keypress',
+  (evt) => {
+    if (
+      toggleKeyCode !== null &&
+      evt.keyCode === toggleKeyCode &&
+      isOnWatchPage() &&
+      isControlsVisible()
+    ) {
+      evt.preventDefault();
+      evt.stopPropagation();
+    }
+  },
+  true
+);
 
-  if (evt.type === 'keydown') {
-    ttLog('>>> synthetic Back (27) for key ' + toggleKeyCode);
-    const kE = document.createEvent('Event');
-    kE.initEvent('keydown', true, true);
-    kE.keyCode = 27;
-    kE.which = 27;
-    document.dispatchEvent(kE);
-  }
-}
+document.addEventListener(
+  'keyup',
+  (evt) => {
+    if (
+      toggleKeyCode !== null &&
+      evt.keyCode === toggleKeyCode &&
+      isOnWatchPage() &&
+      isControlsVisible()
+    ) {
+      evt.preventDefault();
+      evt.stopPropagation();
+    }
+  },
+  true
+);
 
-document.addEventListener('keydown', menuToggleKeyHandler, true);
-document.addEventListener('keypress', menuToggleKeyHandler, true);
-document.addEventListener('keyup', menuToggleKeyHandler, true);
+log('TT menu toggle loaded');
 // ---------------------------------------------------------------------------
 
 function execute_once_dom_loaded() {
@@ -349,7 +373,6 @@ function execute_once_dom_loaded() {
         }
       }
     }
-    // 菜单键开关控制条由模块顶层 menuToggleKeyHandler 处理
     return true;
   }
 
