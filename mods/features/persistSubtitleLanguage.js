@@ -84,58 +84,6 @@ function isNonTranslationSubtitleCommand(cmd) {
     return false;
 }
 
-function tryPlayerSetOption(languageCode, languageName) {
-    const player = getCurrentPlayer();
-
-    if (!player || typeof player.setOption !== 'function') {
-        return false;
-    }
-
-    try {
-        if (typeof player.loadModule === 'function') {
-            try {
-                player.loadModule('captions');
-            } catch (e) {
-            }
-        }
-
-        const translationPayload = {
-            languageCode,
-            translationLanguage: {
-                languageCode,
-                languageName: languageName || languageCode,
-            },
-        };
-
-        try {
-            player.setOption(
-                'captions',
-                'track',
-                translationPayload
-            );
-
-            return true;
-        } catch (e) {
-        }
-
-        try {
-            player.setOption(
-                'captions',
-                'track',
-                {
-                    languageCode,
-                }
-            );
-
-            return true;
-        } catch (e) {
-            return false;
-        }
-    } catch (e) {
-        return false;
-    }
-}
-
 function applyPreferredLanguage() {
     if (!configRead(CONFIG_KEYS.ENABLED)) {
         return;
@@ -151,11 +99,6 @@ function applyPreferredLanguage() {
     isInternalApply = true;
 
     try {
-        tryPlayerSetOption(
-            languageCode,
-            languageName
-        );
-
         resolveCommand({
             selectSubtitlesTrackCommand: {
                 translationLanguage: {
