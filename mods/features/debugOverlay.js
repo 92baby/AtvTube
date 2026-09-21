@@ -31,7 +31,12 @@ function isControlsVisible() {
 }
 
 function isOnWatchPage() {
-  return !!document.querySelector('ytlr-player') || !!document.querySelector('ytlr-player-container');
+  try {
+    const url = new URL(location.hash.substring(1), location.href);
+    return /[?&]v=/.test(url.search);
+  } catch (e) {
+    return false;
+  }
 }
 
 let wasVisible = false;
@@ -39,7 +44,7 @@ let observedEl = null;
 
 function attachObserver() {
   const el = document.querySelector('ytlr-watch-default');
-  if (el === observedEl) return; // 节点没变就不重挂
+  if (el === observedEl) return;
   observedEl = el;
   if (!el) return;
 
@@ -66,6 +71,7 @@ setInterval(attachObserver, 500);
 document.addEventListener('keydown', (evt) => {
   lastKeyCode = evt.keyCode;
   log(`key: ${evt.keyCode}`);
+  log(`hash: ${location.hash}  onWatchPage: ${isOnWatchPage()}`);
 
   if (toggleKeyCode !== null && evt.keyCode === toggleKeyCode && isOnWatchPage() && isControlsVisible()) {
     evt.preventDefault();
