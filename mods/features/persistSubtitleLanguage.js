@@ -1,30 +1,3 @@
-
-/*
- * TizenTube Subtitle Language Persistence Mod
- *
- * Purpose:
- *   Remember the auto-translate subtitle language selected by the user
- *   and re-apply it when a new video starts.
- *
- * Behavior:
- *   - When a new video starts playing, wait 5s then apply the saved
- *     translation language once (skipped if the video has no captions
- *     or no translation languages available).
- *   - At 10s after the video starts, check the current track once; if
- *     it isn't already on the saved language, apply it once more as a
- *     backup. If it already matches, do nothing (avoids interrupting
- *     a track that's already working).
- *   - Each video gets at most these two apply attempts - no ongoing
- *     verification, retries, or polling beyond that.
- *   - If the player later resets subtitles to a non-translated track
- *     on its own (outside this mod), re-apply once immediately.
- *   - If the user manually picks a different translation language via
- *     the normal UI, remember it as the new preferred language.
- *   - Toggling the "remember translated subtitles" option off disables
- *     all of the above; the original resolveCommand is always called
- *     unmodified regardless of this setting.
- */
-
 import { configRead, configWrite, configChangeEmitter } from '../config.js';
 import resolveCommand from '../resolveCommand.js';
 
@@ -38,18 +11,7 @@ const CONFIG_KEYS = {
     NAME: 'preferredSubtitleLanguageName',
 };
 
-// Fixed-time apply schedule, per video, measured from when the video
-// is first observed playing. No verification/retry beyond these two.
-const FIRST_APPLY_DELAY_MS = 5000;
-const SECOND_APPLY_DELAY_MS = 10000;
-
 let isInternalApply = false;
-
-
-/* ============================================================
- * Player helpers
- * ============================================================
- */
 
 function getCurrentPlayer() {
     try {
@@ -68,12 +30,6 @@ function getPlayerVideoId(player) {
         return null;
     }
 }
-
-
-/* ============================================================
- * Subtitle command helpers
- * ============================================================
- */
 
 function extractTranslationCommand(cmd) {
     if (!cmd) return null;
@@ -128,12 +84,6 @@ function isNonTranslationSubtitleCommand(cmd) {
     return false;
 }
 
-
-/* ============================================================
- * Captions API helpers
- * ============================================================
- */
-
 function tryPlayerSetOption(languageCode, languageName) {
     const player = getCurrentPlayer();
 
@@ -146,7 +96,6 @@ function tryPlayerSetOption(languageCode, languageName) {
             try {
                 player.loadModule('captions');
             } catch (e) {
-                // ignore - setOption below still gets a chance to work
             }
         }
 
@@ -159,16 +108,27 @@ function tryPlayerSetOption(languageCode, languageName) {
         };
 
         try {
-            player.setOption('captions', 'track', translationPayload);
+            player.setOption(
+                'captions',
+                'track',
+                translationPayload
+            );
+
             return true;
         } catch (e) {
-            // fall through to the simpler payload below
         }
 
         try {
-            player.setOption('captions', 'track', { languageCode });
+            player.setOption(
+                'captions',
+                'track',
+                {
+                    languageCode,
+                }
+            );
+
             return true;
-        } catch (e2) {
+        } catch (e) {
             return false;
         }
     } catch (e) {
@@ -176,84 +136,39 @@ function tryPlayerSetOption(languageCode, languageName) {
     }
 }
 
-function getCurrentCaptionsTrackLanguage(player) {
-    if (!player || typeof player.getOption !== 'function') {
-        return null;
-    }
-
-    try {
-        const track = player.getOption('captions', 'track');
-
-        return (
-            track?.translationLanguage?.languageCode ||
-            track?.languageCode ||
-            null
-        );
-    } catch (e) {
-        return null;
-    }
-}
-
-function getCaptionsAvailability(player) {
-    if (!player || typeof player.getOption !== 'function') {
-        // Unknown - don't block the apply attempt on an unreadable state.
-        return { known: false };
-    }
-
-    try {
-        const tracklist = player.getOption('captions', 'tracklist');
-        const translationLanguages = player.getOption(
-            'captions',
-            'translationLanguages'
-        );
-
-        return {
-            known: true,
-            hasTracks: !Array.isArray(tracklist) || tracklist.length > 0,
-            hasTranslations:
-                !Array.isArray(translationLanguages) ||
-                translationLanguages.length > 0,
-        };
-    } catch (e) {
-        return { known: false };
-    }
-}
-
-
-/* ============================================================
- * Automatic subtitle application
- * ============================================================
- */
-
 function applyPreferredLanguage() {
-    if (!configRead(CONFIG_KEYS.ENABLED)) return;
+    if (!configRead(CONFIG_KEYS.ENABLED)) {
+        return;
+    }
 
     const languageCode = configRead(CONFIG_KEYS.CODE);
     const languageName = configRead(CONFIG_KEYS.NAME);
 
-    if (!languageCode) return;
+    if (!languageCode) {
+        return;
+    }
 
     isInternalApply = true;
 
     try {
-        tryPlayerSetOption(languageCode, languageName);
+        const viaSetOption = tryPlayerSetOption(
+            languageCode,
+            languageName
+        );
 
-        const command = {
+        console.log(
+            `[Subtitle Persistence] Applying ${languageCode} (setOption: ${viaSetOption ? 'ok' : 'unavailable/failed'})`
+        );
+
+        resolveCommand({
             selectSubtitlesTrackCommand: {
                 translationLanguage: {
                     languageCode,
                     languageName: languageName || languageCode,
                 },
             },
-        };
-
-        try {
-            resolveCommand(command);
-        } catch (e) {
-            // ignore - nothing else to fall back to here
-        }
+        });
     } catch (e) {
-        // Never let a failure here leave isInternalApply stuck true.
     }
 
     Promise.resolve().then(() => {
@@ -261,22 +176,19 @@ function applyPreferredLanguage() {
     });
 }
 
-
-/* ============================================================
- * Main handler
- * ============================================================
- */
-
 class SubtitlePersistenceHandler {
     #player = null;
-    #isPatched = false;
-
-    // At most one 5s timer and one 10s timer per video. A video is
-    // "scheduled" the moment its timers are set, so later events for
-    // the same video never schedule a second pair.
+    #lastVideoId = null;
     #scheduledVideoId = null;
-    #firstTimer = null;
-    #secondTimer = null;
+    #timers = [];
+    #isPatched = false;
+    // The video id the user manually overrode captions for (turned
+    // them off, or picked a non-translated track) while persistence
+    // was on. Scoped to a single video id on purpose: once the video
+    // changes, this is simply never equal to the new video id again,
+    // so the default language resumes applying with no extra reset
+    // logic needed.
+    #overriddenVideoId = null;
 
     constructor() {
         this.init();
@@ -293,194 +205,204 @@ class SubtitlePersistenceHandler {
     }
 
     #isPlayerPlaying() {
-        if (!this.#player) return false;
+        if (!this.#player) {
+            return false;
+        }
 
         try {
-            const stateObject = this.#player.getPlayerStateObject?.();
+            const stateObject =
+                this.#player.getPlayerStateObject?.();
 
-            if (stateObject && typeof stateObject.isPlaying === 'boolean') {
+            if (
+                stateObject &&
+                typeof stateObject.isPlaying === 'boolean'
+            ) {
                 return stateObject.isPlaying;
             }
 
-            const numericState = this.#player.getPlayerState?.();
-
-            // Numeric state 1 = playing on many YouTube players.
-            return numericState === 1;
+            return this.#player.getPlayerState?.() === 1;
         } catch (e) {
             return false;
         }
     }
 
-    #clearScheduledTimers() {
-        if (this.#firstTimer) {
-            clearTimeout(this.#firstTimer);
-            this.#firstTimer = null;
+    #clearTimers() {
+        for (const timerId of this.#timers) {
+            clearTimeout(timerId);
         }
 
-        if (this.#secondTimer) {
-            clearTimeout(this.#secondTimer);
-            this.#secondTimer = null;
-        }
+        this.#timers = [];
     }
 
-    #scheduleForVideo(videoId) {
-        if (!videoId) return;
-        if (!configRead(CONFIG_KEYS.ENABLED)) return;
-        if (!configRead(CONFIG_KEYS.CODE)) return;
-
-        if (this.#scheduledVideoId === videoId) {
-            // Already scheduled (or already ran) for this video.
+    #scheduleApply(videoId) {
+        if (!videoId) {
             return;
         }
 
-        this.#clearScheduledTimers();
-        this.#scheduledVideoId = videoId;
+        if (!configRead(CONFIG_KEYS.CODE)) {
+            return;
+        }
 
-        this.#firstTimer = setTimeout(() => {
-            this.#firstTimer = null;
-            this.#runFirstApply(videoId);
-        }, FIRST_APPLY_DELAY_MS);
-
-        this.#secondTimer = setTimeout(() => {
-            this.#secondTimer = null;
-            this.#runSecondApply(videoId);
-        }, SECOND_APPLY_DELAY_MS);
-    }
-
-    #runFirstApply(videoId) {
-        if (this.#getVideoId() !== videoId) return;
-        if (!configRead(CONFIG_KEYS.ENABLED)) return;
-
-        const availability = getCaptionsAvailability(getCurrentPlayer());
+        // The user already chose something else for this specific
+        // video (see the resolveCommand wrapper below) — respect that
+        // for the rest of this video instead of fighting it.
+        if (videoId === this.#overriddenVideoId) {
+            return;
+        }
 
         if (
-            availability.known &&
-            (!availability.hasTracks || !availability.hasTranslations)
+            videoId === this.#scheduledVideoId &&
+            this.#timers.length > 0
         ) {
-            // No captions, or no translation support, for this video.
             return;
         }
 
-        applyPreferredLanguage();
+        this.#clearTimers();
+
+        this.#scheduledVideoId = videoId;
+
+        for (const delay of [5000, 10000]) {
+            const timerId = setTimeout(() => {
+                if (!configRead(CONFIG_KEYS.ENABLED)) {
+                    return;
+                }
+
+                if (this.#getVideoId() !== videoId) {
+                    return;
+                }
+
+                applyPreferredLanguage();
+            }, delay);
+
+            this.#timers.push(timerId);
+        }
     }
 
-    #runSecondApply(videoId) {
-        if (this.#getVideoId() !== videoId) return;
-        if (!configRead(CONFIG_KEYS.ENABLED)) return;
-
-        const desiredCode = configRead(CONFIG_KEYS.CODE);
-        const currentCode = getCurrentCaptionsTrackLanguage(
-            getCurrentPlayer()
-        );
-
-        if (currentCode === desiredCode) {
-            // Already on the right language from the first apply -
-            // leave it alone rather than risk interrupting it.
+    #updateVideoContext(videoId) {
+        if (!videoId) {
             return;
         }
 
-        applyPreferredLanguage();
-    }
+        if (videoId === this.#lastVideoId) {
+            return;
+        }
 
-    #startDOMCheck() {
-        setInterval(() => {
-            const playerElement = getCurrentPlayer();
+        this.#lastVideoId = videoId;
+        this.#scheduledVideoId = null;
 
-            if (playerElement && this.#player !== playerElement) {
-                if (this.#player) {
-                    try {
-                        this.#player.removeEventListener(
-                            'onStateChange',
-                            this.#handleStateChange
-                        );
-
-                        this.#player.removeEventListener(
-                            'onPlaybackStartExternal',
-                            this.#handlePlaybackStart
-                        );
-                    } catch (e) {
-                        // ignore
-                    }
-                }
-
-                this.#player = playerElement;
-
-                try {
-                    this.#player.addEventListener(
-                        'onStateChange',
-                        this.#handleStateChange
-                    );
-
-                    this.#player.addEventListener(
-                        'onPlaybackStartExternal',
-                        this.#handlePlaybackStart
-                    );
-                } catch (e) {
-                    // ignore
-                }
-
-                // Catch up if the player already exists and is playing.
-                this.#handleStateChange();
-            }
-        }, 1500);
+        this.#clearTimers();
     }
 
     #handleStateChange = () => {
         const videoId = this.#getVideoId();
 
-        if (!videoId) return;
-        if (!configRead(CONFIG_KEYS.ENABLED)) return;
+        if (!configRead(CONFIG_KEYS.ENABLED)) {
+            return;
+        }
+
+        if (!videoId) {
+            return;
+        }
+
+        this.#updateVideoContext(videoId);
 
         if (this.#isPlayerPlaying()) {
-            this.#scheduleForVideo(videoId);
+            this.#scheduleApply(videoId);
         }
     };
 
     #handlePlaybackStart = () => {
         const videoId = this.#getVideoId();
 
-        if (!videoId) return;
-        if (!configRead(CONFIG_KEYS.ENABLED)) return;
+        if (!configRead(CONFIG_KEYS.ENABLED)) {
+            return;
+        }
 
-        this.#scheduleForVideo(videoId);
+        if (!videoId) {
+            return;
+        }
+
+        this.#updateVideoContext(videoId);
+        this.#scheduleApply(videoId);
     };
 
-    #onExternalReset() {
-        if (!configRead(CONFIG_KEYS.ENABLED)) return;
-        if (!configRead(CONFIG_KEYS.CODE)) return;
-        if (isInternalApply) return;
-        if (!this.#getVideoId()) return;
+    #setupPlayer(player) {
+        if (this.#player) {
+            try {
+                this.#player.removeEventListener(
+                    'onStateChange',
+                    this.#handleStateChange
+                );
 
-        applyPreferredLanguage();
+                this.#player.removeEventListener(
+                    'onPlaybackStartExternal',
+                    this.#handlePlaybackStart
+                );
+            } catch (e) {
+            }
+        }
+
+        this.#player = player;
+
+        try {
+            this.#player.addEventListener(
+                'onStateChange',
+                this.#handleStateChange
+            );
+
+            this.#player.addEventListener(
+                'onPlaybackStartExternal',
+                this.#handlePlaybackStart
+            );
+        } catch (e) {
+        }
+
+        this.#handleStateChange();
+    }
+
+    #startDOMCheck() {
+        setInterval(() => {
+            const playerElement = getCurrentPlayer();
+
+            if (
+                playerElement &&
+                this.#player !== playerElement
+            ) {
+                this.#setupPlayer(playerElement);
+            }
+        }, 1500);
     }
 
     #setupConfigListener() {
-        configChangeEmitter.addEventListener('configChange', (ev) => {
-            const detail = ev.detail || {};
-            const key = detail.key;
-            const isEnabled = configRead(CONFIG_KEYS.ENABLED);
+        configChangeEmitter.addEventListener(
+            'configChange',
+            (ev) => {
+                const key = ev.detail?.key;
 
-            if (!isEnabled) {
-                this.#clearScheduledTimers();
+                if (
+                    key !== CONFIG_KEYS.ENABLED &&
+                    key !== CONFIG_KEYS.CODE &&
+                    key !== CONFIG_KEYS.NAME
+                ) {
+                    return;
+                }
+
                 this.#scheduledVideoId = null;
-                return;
-            }
+                this.#overriddenVideoId = null;
+                this.#clearTimers();
 
-            if (
-                key === CONFIG_KEYS.ENABLED ||
-                key === CONFIG_KEYS.CODE ||
-                key === CONFIG_KEYS.NAME
-            ) {
-                this.#clearScheduledTimers();
-                this.#scheduledVideoId = null;
+                if (
+                    configRead(CONFIG_KEYS.ENABLED) &&
+                    configRead(CONFIG_KEYS.CODE)
+                ) {
+                    const videoId = this.#getVideoId();
 
-                const videoId = this.#getVideoId();
-
-                if (videoId) {
-                    this.#scheduleForVideo(videoId);
+                    if (videoId) {
+                        this.#scheduleApply(videoId);
+                    }
                 }
             }
-        });
+        );
     }
 
     #patchResolveCommand() {
@@ -516,15 +438,15 @@ class SubtitlePersistenceHandler {
                 return;
             }
 
-            const originalResolveCommand = instance.resolveCommand;
+            const originalResolveCommand =
+                instance.resolveCommand;
+
             const self = this;
 
             instance.resolveCommand = function(cmd, _) {
                 const hasSubtitleCommand =
                     hasSelectSubtitlesTrackCommand(cmd);
 
-                // The original command handler always runs unmodified,
-                // regardless of this mod's enabled state.
                 const result = originalResolveCommand.apply(
                     this,
                     arguments
@@ -532,23 +454,27 @@ class SubtitlePersistenceHandler {
 
                 if (
                     configRead(CONFIG_KEYS.ENABLED) &&
-                    hasSubtitleCommand
+                    hasSubtitleCommand &&
+                    !isInternalApply
                 ) {
                     const translationLanguage =
                         extractTranslationCommand(cmd);
 
-                    if (translationLanguage && !isInternalApply) {
-                        const { languageCode, languageName } =
-                            translationLanguage;
+                    if (translationLanguage) {
+                        const {
+                            languageCode,
+                            languageName,
+                        } = translationLanguage;
 
-                        if (
-                            languageCode &&
-                            languageCode !==
-                                configRead(CONFIG_KEYS.CODE)
-                        ) {
-                            // The user manually picked a different
-                            // translation language - remember it.
-                            configWrite(CONFIG_KEYS.CODE, languageCode);
+                        if (languageCode) {
+                            console.log(
+                                `[Subtitle Persistence] Remembering manually picked language: ${languageCode}`
+                            );
+
+                            configWrite(
+                                CONFIG_KEYS.CODE,
+                                languageCode
+                            );
 
                             configWrite(
                                 CONFIG_KEYS.NAME,
@@ -556,12 +482,26 @@ class SubtitlePersistenceHandler {
                             );
                         }
                     } else if (
-                        !isInternalApply &&
                         isNonTranslationSubtitleCommand(cmd)
                     ) {
-                        // The player reset subtitles to a
-                        // non-translated track on its own.
-                        self.#onExternalReset();
+                        // User manually turned captions off or picked
+                        // a non-translated track: honour that for the
+                        // rest of THIS video (cancel any still-pending
+                        // auto-apply timers so they don't silently
+                        // undo the choice a few seconds later), but
+                        // don't touch the saved preferred language —
+                        // the next video still defaults to it.
+                        const videoId = self.#getVideoId();
+
+                        if (videoId) {
+                            console.log(
+                                `[Subtitle Persistence] Manual override for this video (${videoId}); pausing auto-apply until the next video`
+                            );
+
+                            self.#overriddenVideoId = videoId;
+                            self.#scheduledVideoId = null;
+                            self.#clearTimers();
+                        }
                     }
                 }
 
@@ -572,19 +512,18 @@ class SubtitlePersistenceHandler {
                 .isPatchedByPersistSubtitleLanguage = true;
 
             this.#isPatched = true;
+
             clearInterval(interval);
         }, 500);
     }
 }
 
-
-/* ============================================================
- * Start
- * ============================================================
- */
-
 try {
-    window.subtitlePersistenceHandler = new SubtitlePersistenceHandler();
+    window.subtitlePersistenceHandler =
+        new SubtitlePersistenceHandler();
 } catch (e) {
-    console.error('[Subtitle Persistence] Startup failed:', e);
+    console.error(
+        '[Subtitle Persistence] Startup failed:',
+        e
+    );
 }
