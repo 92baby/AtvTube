@@ -37,4 +37,10 @@ setInterval(() => {
       last[name] = val;
     }
   }
+
+  const hasVideo = !!document.querySelector('video');
+  if (last['has-video'] !== hasVideo) {
+    log(`has-video = ${hasVideo}`);
+    last['has-video'] = hasVideo;
+  }
 }, 300);
