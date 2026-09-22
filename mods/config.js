@@ -19,7 +19,7 @@ const defaultConfig = {
   enableDeArrowThumbnails: false,
   focusContainerColor: '#0f0f0f',
   routeColor: '#0f0f0f',
-  enableFixedUI: (window.h5vcc) ? false : true,
+  enableFixedUI: true,
   lastResolvedUILanguage: null,
   enableHqThumbnails: false,
   enableChapters: true,
