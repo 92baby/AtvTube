@@ -210,7 +210,7 @@ class SubtitlePersistenceHandler {
             }
 
             applyPreferredLanguage();
-        }, 1000);
+        }, 3000);
 
         this.#timers.push(timerId);
     }
