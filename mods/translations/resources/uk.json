@@ -143,7 +143,7 @@
                     },
                     "launchToOnStartup": {
                         "title": "Відкривати при запуску",
-                        "subtitle": "Виберіть сторінку, яка відкриватиметься під час запуску TizenTube"
+                        "subtitle": "Виберіть сторінку, яка відкриватиметься під час запуску YouTube"
                     },
                     "categories": {
                         "search": "Пошук",
@@ -192,13 +192,13 @@
             }
         },
         "ttSettings": {
-            "title": "Налаштування TizenTube",
-            "summary": "Відкрити налаштування TizenTube"
+            "title": "Налаштування YouTube",
+            "summary": "Відкрити налаштування YouTube"
         }
     },
     "welcomeMsg": {
-        "title": "Ласкаво просимо до TizenTube",
-        "subtitle": "Перейдіть у налаштування та натисніть «Налаштування TizenTube»."
+        "title": "Ласкаво просимо до YouTube",
+        "subtitle": "Перейдіть у налаштування та натисніть «Налаштування YouTube»."
     },
     "sponsorblock": {
         "segments": {
@@ -229,7 +229,7 @@
         "pictureInPicture": "Картинка в картинці (PiP)",
         "previous": "Попереднє",
         "next": "Наступне",
-        "withTizenTube": "з TizenTube",
+        "withTizenTube": "з YouTube",
         "share": {
             "title": "Share",
             "button": "Share",

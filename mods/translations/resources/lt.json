@@ -51,7 +51,7 @@
                     "longPress": "Įjungti ilgo paspaudimo veiksmus",
                     "shorts": "Įjungti trumpuosius vaizdo įrašus („Shorts“)",
                     "videoPreviews": "Įjungti vaizdo įrašų peržiūras",
-                    "ttWelcomeMsg": "Rodyti „TizenTube“ pasisveikinimą",
+                    "ttWelcomeMsg": "Rodyti „YouTube“ pasisveikinimą",
                     "guestSignInReminder": "Rodyti svečio prisijungimo priminimą",
                     "reloadHomeOnStartup": "Atnaujinti pagrindinį puslapį paleidžiant"
                 }
@@ -137,7 +137,7 @@
                     },
                     "launchToOnStartup": {
                         "title": "Pradinis puslapis paleidžiant",
-                        "subtitle": "Pasirinkite numatytąjį puslapį, kurį „TizenTube“ atidarys paleidimo metu"
+                        "subtitle": "Pasirinkite numatytąjį puslapį, kurį „YouTube“ atidarys paleidimo metu"
                     },
                     "sortSubscriptionsByAlphabet": "Rūšiuoti prenumeratas abėcėlės tvarka",
                     "categories": {
@@ -192,13 +192,13 @@
             }
         },
         "ttSettings": {
-            "title": "„TizenTube“ nustatymai",
-            "summary": "Atidaryti „TizenTube“ nustatymus"
+            "title": "„YouTube“ nustatymai",
+            "summary": "Atidaryti „YouTube“ nustatymus"
         }
     },
     "welcomeMsg": {
-        "title": "Sveiki! Čia – „TizenTube“",
-        "subtitle": "Eikite į nustatymus ir pasirinkite „„TizenTube“ nustatymai“, jei norite juos keisti."
+        "title": "Sveiki! Čia – „YouTube“",
+        "subtitle": "Eikite į nustatymus ir pasirinkite „„YouTube“ nustatymai“, jei norite juos keisti."
     },
     "sponsorblock": {
         "segments": {
@@ -229,7 +229,7 @@
         "pictureInPicture": "Picture in Picture",
         "previous": "Previous",
         "next": "Next",
-        "withTizenTube": "with TizenTube",
+        "withTizenTube": "with YouTube",
         "share": {
             "title": "Share",
             "button": "Share",

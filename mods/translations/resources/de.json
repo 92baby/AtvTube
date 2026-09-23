@@ -143,7 +143,7 @@
                     },
                     "launchToOnStartup": {
                         "title": "Startseite beim Start",
-                        "subtitle": "Wähle die Standardseite, die TizenTube beim Start öffnet"
+                        "subtitle": "Wähle die Standardseite, die YouTube beim Start öffnet"
                     },
                     "categories": {
                         "search": "Suchen",
@@ -192,13 +192,13 @@
             }
         },
         "ttSettings": {
-            "title": "TizenTube-Einstellungen",
-            "summary": "TizenTube-Einstellungen öffnen"
+            "title": "YouTube-Einstellungen",
+            "summary": "YouTube-Einstellungen öffnen"
         }
     },
     "welcomeMsg": {
-        "title": "Willkommen bei TizenTube",
-        "subtitle": "Gehe zu den Einstellungen und klicke auf TizenTube-Einstellungen."
+        "title": "Willkommen bei YouTube",
+        "subtitle": "Gehe zu den Einstellungen und klicke auf YouTube-Einstellungen."
     },
     "sponsorblock": {
         "segments": {
@@ -229,7 +229,7 @@
         "pictureInPicture": "Bild-in-Bild",
         "previous": "Zurück",
         "next": "Weiter",
-        "withTizenTube": "mit TizenTube",
+        "withTizenTube": "mit YouTube",
         "share": {
             "title": "Share",
             "button": "Share",

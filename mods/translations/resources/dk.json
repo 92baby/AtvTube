@@ -137,7 +137,7 @@
                     },
                     "launchToOnStartup": {
                         "title": "Startside ved Opstart",
-                        "subtitle": "Vælg den standardside, TizenTube åbner ved opstart"
+                        "subtitle": "Vælg den standardside, YouTube åbner ved opstart"
                     },
                     "sortSubscriptionsByAlphabet": "Sort Subscriptions Alphabetically",
                     "categories": {
@@ -192,13 +192,13 @@
             }
         },
         "ttSettings": {
-            "title": "TizenTube-indstillinger",
-            "summary": "Åbn TizenTube-indstillinger"
+            "title": "YouTube-indstillinger",
+            "summary": "Åbn YouTube-indstillinger"
         }
     },
     "welcomeMsg": {
-        "title": "Velkommen til TizenTube",
-        "subtitle": "Gå til indstillinger, og klik på TizenTube-indstillinger for at åbne indstillingerne."
+        "title": "Velkommen til YouTube",
+        "subtitle": "Gå til indstillinger, og klik på YouTube-indstillinger for at åbne indstillingerne."
     },
     "sponsorblock": {
         "segments": {
@@ -229,7 +229,7 @@
         "pictureInPicture": "Picture in Picture",
         "previous": "Previous",
         "next": "Next",
-        "withTizenTube": "with TizenTube",
+        "withTizenTube": "with YouTube",
         "share": {
             "title": "Share",
             "button": "Share",

@@ -51,7 +51,7 @@
                     "longPress": "启用长按操作",
                     "shorts": "启用 Shorts",
                     "videoPreviews": "启用视频预览",
-                    "ttWelcomeMsg": "显示 TizenTube 欢迎消息",
+                    "ttWelcomeMsg": "显示 YouTube 欢迎消息",
                     "guestSignInReminder": "显示访客登录提醒",
                     "reloadHomeOnStartup": "启动时重新加载首页"
                 }
@@ -157,7 +157,7 @@
                     },
                     "launchToOnStartup": {
                         "title": "启动时打开页面",
-                        "subtitle": "选择 TizenTube 启动时默认打开的页面"
+                        "subtitle": "选择 YouTube 启动时默认打开的页面"
                     },
                     "categories": {
                         "search": "搜索",
@@ -192,13 +192,13 @@
             }
         },
         "ttSettings": {
-            "title": "TizenTube 设置",
-            "summary": "打开 TizenTube 设置"
+            "title": "YouTube 设置",
+            "summary": "打开 YouTube 设置"
         }
     },
     "welcomeMsg": {
-        "title": "欢迎使用 TizenTube",
-        "subtitle": "请前往设置并点击 TizenTube 设置进行配置。"
+        "title": "欢迎使用 YouTube",
+        "subtitle": "请前往设置并点击 YouTube 设置进行配置。"
     },
     "sponsorblock": {
         "segments": {
@@ -229,7 +229,7 @@
         "pictureInPicture": "画中画",
         "previous": "上一个",
         "next": "下一个",
-        "withTizenTube": "使用 TizenTube",
+        "withTizenTube": "使用 YouTube",
         "share": {
             "title": "分享",
             "button": "分享",

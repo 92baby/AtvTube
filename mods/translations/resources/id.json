@@ -137,7 +137,7 @@
                     },
                     "launchToOnStartup": {
                         "title": "Halaman yang Dibuka saat Startup",
-                        "subtitle": "Pilih halaman default yang dibuka TizenTube saat startup"
+                        "subtitle": "Pilih halaman default yang dibuka YouTube saat startup"
                     },
                     "sortSubscriptionsByAlphabet": "Sort Subscriptions Alphabetically",
                     "categories": {
@@ -192,13 +192,13 @@
             }
         },
         "ttSettings": {
-            "title": "Pengaturan TizenTube",
-            "summary": "Buka Pengaturan TizenTube"
+            "title": "Pengaturan YouTube",
+            "summary": "Buka Pengaturan YouTube"
         }
     },
     "welcomeMsg": {
-        "title": "Selamat Datang di TizenTube",
-        "subtitle": "Buka pengaturan lalu klik Pengaturan TizenTube untuk mengatur fitur."
+        "title": "Selamat Datang di YouTube",
+        "subtitle": "Buka pengaturan lalu klik Pengaturan YouTube untuk mengatur fitur."
     },
     "sponsorblock": {
         "segments": {
@@ -229,7 +229,7 @@
         "pictureInPicture": "Picture in Picture",
         "previous": "Previous",
         "next": "Next",
-        "withTizenTube": "with TizenTube",
+        "withTizenTube": "with YouTube",
         "share": {
             "title": "Share",
             "button": "Share",

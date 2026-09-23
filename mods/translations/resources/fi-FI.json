@@ -137,7 +137,7 @@
                     },
                     "launchToOnStartup": {
                         "title": "Aloitussivu käynnistyksessä",
-                        "subtitle": "Valitse oletussivu, johon TizenTube avautuu käynnistyksessä"
+                        "subtitle": "Valitse oletussivu, johon YouTube avautuu käynnistyksessä"
                     },
                     "categories": {
                         "search": "Search",
@@ -192,13 +192,13 @@
             }
         },
         "ttSettings": {
-            "title": "TizenTube-asetukset",
-            "summary": "Avaa TizenTube-asetukset"
+            "title": "YouTube-asetukset",
+            "summary": "Avaa YouTube-asetukset"
         }
     },
     "welcomeMsg": {
-        "title": "Tervetuloa TizenTubeen",
-        "subtitle": "Siirry asetuksiin ja avaa TizenTube-asetukset."
+        "title": "Tervetuloa YouTubeen",
+        "subtitle": "Siirry asetuksiin ja avaa YouTube-asetukset."
     },
     "sponsorblock": {
         "segments": {
@@ -229,7 +229,7 @@
         "pictureInPicture": "Picture in Picture",
         "previous": "Previous",
         "next": "Next",
-        "withTizenTube": "with TizenTube",
+        "withTizenTube": "with YouTube",
         "share": {
             "title": "Share",
             "button": "Share",

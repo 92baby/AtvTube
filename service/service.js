@@ -49,7 +49,7 @@ const dialServer = new dial.Server({
     prefix: "/dial",
     manufacturer: 'Reis Can',
     modelName: 'TizenBrew',
-    friendlyName: `TizenTube (${tizen.systeminfo.getCapability('http://tizen.org/system/model_name')})`,
+    friendlyName: `YouTube (${tizen.systeminfo.getCapability('http://tizen.org/system/model_name')})`,
     uuid: uuid.v5(tizen.systeminfo.getCapability('http://tizen.org/system/tizenid'), '4bcbc514-bdd6-4163-8215-316526fd1d9b'),
     delegate: {
         getApp(appName) {

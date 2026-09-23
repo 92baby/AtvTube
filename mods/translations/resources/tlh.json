@@ -192,12 +192,12 @@
             }
         },
         "ttSettings": {
-            "title": "TizenTube choHtaHghach",
-            "summary": "TizenTube choHtaHghach yIpoS"
+            "title": "YouTube choHtaHghach",
+            "summary": "YouTube choHtaHghach yIpoS"
         }
     },
     "welcomeMsg": {
-        "title": "TizenTube-Daq yI'el!",
+        "title": "YouTube-Daq yI'el!",
         "subtitle": "choHtaHghach yInuqlI'!"
     },
     "sponsorblock": {
@@ -229,7 +229,7 @@
         "pictureInPicture": "Picture in Picture",
         "previous": "Previous",
         "next": "Next",
-        "withTizenTube": "with TizenTube",
+        "withTizenTube": "with YouTube",
         "share": {
             "title": "Share",
             "button": "Share",

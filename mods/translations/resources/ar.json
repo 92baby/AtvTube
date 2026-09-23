@@ -192,13 +192,13 @@
             }
         },
         "ttSettings": {
-            "title": "TizenTube إعدادات",
-            "summary": "فتح إعدادات TizenTube"
+            "title": "YouTube إعدادات",
+            "summary": "فتح إعدادات YouTube"
         }
     },
     "welcomeMsg": {
-        "title": "مرحبًا بك في TizenTube",
-        "subtitle": "انتقل إلى الإعدادات واضغط على إعدادات TizenTube."
+        "title": "مرحبًا بك في YouTube",
+        "subtitle": "انتقل إلى الإعدادات واضغط على إعدادات YouTube."
     },
     "sponsorblock": {
         "segments": {
@@ -229,7 +229,7 @@
         "pictureInPicture": "Picture in Picture",
         "previous": "Previous",
         "next": "Next",
-        "withTizenTube": "with TizenTube",
+        "withTizenTube": "with YouTube",
         "share": {
             "title": "Share",
             "button": "Share",

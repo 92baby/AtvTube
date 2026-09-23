@@ -137,7 +137,7 @@
                     },
                     "launchToOnStartup": {
                         "title": "Sākumlapa palaišanas brīdī",
-                        "subtitle": "Izvēlieties noklusējuma lapu, kuru TizenTube atvērs palaišanas brīdī"
+                        "subtitle": "Izvēlieties noklusējuma lapu, kuru YouTube atvērs palaišanas brīdī"
                     },
                     "sortSubscriptionsByAlphabet": "Sort Subscriptions Alphabetically",
                     "categories": {
@@ -192,13 +192,13 @@
             }
         },
         "ttSettings": {
-            "title": "TizenTube iestatījumi",
-            "summary": "Atvērt TizenTube iestatījumus"
+            "title": "YouTube iestatījumi",
+            "summary": "Atvērt YouTube iestatījumus"
         }
     },
     "welcomeMsg": {
-        "title": "Laipni lūdzam TizenTube",
-        "subtitle": "Dodieties uz iestatījumiem un noklikšķiniet uz 'TizenTube iestatījumi', lai veiktu izmaiņas."
+        "title": "Laipni lūdzam YouTube",
+        "subtitle": "Dodieties uz iestatījumiem un noklikšķiniet uz 'YouTube iestatījumi', lai veiktu izmaiņas."
     },
     "sponsorblock": {
         "segments": {
@@ -229,7 +229,7 @@
         "pictureInPicture": "Picture in Picture",
         "previous": "Previous",
         "next": "Next",
-        "withTizenTube": "with TizenTube",
+        "withTizenTube": "with YouTube",
         "share": {
             "title": "Share",
             "button": "Share",

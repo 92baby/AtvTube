@@ -137,7 +137,7 @@
                     },
                     "launchToOnStartup": {
                         "title": "Početna stranica pri pokretanju",
-                        "subtitle": "Izaberite podrazumevanu stranicu koja se otvara pri pokretanju TizenTube-a"
+                        "subtitle": "Izaberite podrazumevanu stranicu koja se otvara pri pokretanju YouTube-a"
                     },
                     "sortSubscriptionsByAlphabet": "Sortiraj pretplate po azbuci",
                     "disableChannelsOnSidebar": "Onemogući kanale na bočnoj traci",
@@ -192,13 +192,13 @@
             }
         },
         "ttSettings": {
-            "title": "TizenTube podešavanja",
-            "summary": "Otvori TizenTube podešavanja"
+            "title": "YouTube podešavanja",
+            "summary": "Otvori YouTube podešavanja"
         }
     },
     "welcomeMsg": {
-        "title": "Dobrodošli u TizenTube",
-        "subtitle": "Idite u podešavanja i kliknite na 'TizenTube podešavanja' za konfiguraciju."
+        "title": "Dobrodošli u YouTube",
+        "subtitle": "Idite u podešavanja i kliknite na 'YouTube podešavanja' za konfiguraciju."
     },
     "sponsorblock": {
         "segments": {
@@ -229,7 +229,7 @@
         "pictureInPicture": "Picture in Picture",
         "previous": "Previous",
         "next": "Next",
-        "withTizenTube": "with TizenTube",
+        "withTizenTube": "with YouTube",
         "share": {
             "title": "Share",
             "button": "Share",

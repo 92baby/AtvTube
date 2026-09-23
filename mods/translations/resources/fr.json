@@ -146,7 +146,7 @@
                     },
                     "launchToOnStartup": {
                         "title": "Page de lancement au démarrage",
-                        "subtitle": "Choisissez la page par défaut sur laquelle TizenTube s'ouvre au démarrage"
+                        "subtitle": "Choisissez la page par défaut sur laquelle YouTube s'ouvre au démarrage"
                     },
                     "categories": {
                         "search": "Recherche",
@@ -195,8 +195,8 @@
             }
         },
         "ttSettings": {
-            "summary": "Ouvrir les paramètres de TizenTube",
-            "title": "Paramètres de TizenTube"
+            "summary": "Ouvrir les paramètres de YouTube",
+            "title": "Paramètres de YouTube"
         }
     },
     "player": {
@@ -215,7 +215,7 @@
             "qrCodeScanMessage": "Scannez le code QR ci-dessous pour partager cette vidéo.",
             "title": "Partager"
         },
-        "withTizenTube": "avec TizenTube"
+        "withTizenTube": "avec YouTube"
     },
     "sponsorblock": {
         "segments": {
@@ -245,7 +245,7 @@
         "videoQueueCleared": "File d'attente vidéo effacée."
     },
     "welcomeMsg": {
-        "subtitle": "Accédez aux paramètres et cliquez sur Paramètres de TizenTube pour les configurer.",
-        "title": "Bienvenue sur TizenTube"
+        "subtitle": "Accédez aux paramètres et cliquez sur Paramètres de YouTube pour les configurer.",
+        "title": "Bienvenue sur YouTube"
     }
 }

@@ -157,7 +157,7 @@
                     },
                     "launchToOnStartup": {
                         "title": "Launch To on Startup",
-                        "subtitle": "Choose the default page TizenTube opens to on startup"
+                        "subtitle": "Choose the default page YouTube opens to on startup"
                     },
                     "categories": {
                         "search": "Search",
@@ -192,13 +192,13 @@
             }
         },
         "ttSettings": {
-            "title": "TizenTube Settings",
-            "summary": "Open TizenTube Settings"
+            "title": "YouTube Settings",
+            "summary": "Open YouTube Settings"
         }
     },
     "welcomeMsg": {
-        "title": "Welcome to TizenTube",
-        "subtitle": "Go to settings and click on TizenTube Settings for settings."
+        "title": "Welcome to YouTube",
+        "subtitle": "Go to settings and click on YouTube Settings for settings."
     },
     "sponsorblock": {
         "segments": {
@@ -229,7 +229,7 @@
         "pictureInPicture": "Picture in Picture",
         "previous": "Previous",
         "next": "Next",
-        "withTizenTube": "with TizenTube",
+        "withTizenTube": "with YouTube",
         "share": {
             "title": "Share",
             "button": "Share",

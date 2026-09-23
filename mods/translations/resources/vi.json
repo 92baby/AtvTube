@@ -52,7 +52,7 @@
                     "longPress": "Bật thao tác nhấn giữ",
                     "shorts": "Bật Shorts",
                     "videoPreviews": "Bật tính năng xem trước video",
-                    "ttWelcomeMsg": "Hiển thị thông báo chào mừng TizenTube",
+                    "ttWelcomeMsg": "Hiển thị thông báo chào mừng YouTube",
                     "guestSignInReminder": "Hiển thị nhắc nhở đăng nhập cho chế độ khách",
                     "reloadHomeOnStartup": "Tải lại trang chủ khi khởi động"
                 }
@@ -138,7 +138,7 @@
                     },
                     "launchToOnStartup": {
                         "title": "Trang khởi động",
-                        "subtitle": "Chọn trang mặc định mà TizenTube sẽ mở khi khởi động"
+                        "subtitle": "Chọn trang mặc định mà YouTube sẽ mở khi khởi động"
                     },
                     "sortSubscriptionsByAlphabet": "Sắp xếp các kênh đăng ký theo bảng chữ cái",
                     "disableChannelsOnSidebar": "Ẩn kênh khỏi thanh điều hướng",
@@ -193,13 +193,13 @@
             }
         },
         "ttSettings": {
-            "title": "Cài đặt TizenTube",
-            "summary": "Mở Cài đặt TizenTube"
+            "title": "Cài đặt YouTube",
+            "summary": "Mở Cài đặt YouTube"
         }
     },
     "welcomeMsg": {
-        "title": "Chào mừng đến với TizenTube",
-        "subtitle": "Vào mục Cài đặt và nhấp vào Cài đặt TizenTube để tùy chỉnh."
+        "title": "Chào mừng đến với YouTube",
+        "subtitle": "Vào mục Cài đặt và nhấp vào Cài đặt YouTube để tùy chỉnh."
     },
     "sponsorblock": {
         "segments": {
@@ -230,7 +230,7 @@
         "pictureInPicture": "Picture-in-Picture",
         "previous": "Trước",
         "next": "Tiếp",
-        "withTizenTube": "với TizenTube",
+        "withTizenTube": "với YouTube",
         "share": {
             "title": "Chia sẻ",
             "button": "Chia sẻ",

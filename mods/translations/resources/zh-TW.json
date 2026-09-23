@@ -51,7 +51,7 @@
                     "longPress": "啟用長按操作",
                     "shorts": "啟用 Shorts(短影音)",
                     "videoPreviews": "啟用影片預覽",
-                    "ttWelcomeMsg": "顯示 TT(TizenTube)歡迎訊息",
+                    "ttWelcomeMsg": "顯示 TT(YouTube)歡迎訊息",
                     "guestSignInReminder": "顯示訪客登入提醒",
                     "reloadHomeOnStartup": "啟動時重新載入首頁"
                 }
@@ -137,7 +137,7 @@
                     },
                     "launchToOnStartup": {
                         "title": "啟動時預設頁面",
-                        "subtitle": "選擇 TizenTube 啟動時預設開啟的頁面"
+                        "subtitle": "選擇 YouTube 啟動時預設開啟的頁面"
                     },
                     "sortSubscriptionsByAlphabet": "訂閱依字母排序",
                     "categories": {
@@ -192,13 +192,13 @@
             }
         },
         "ttSettings": {
-            "title": "TizenTube 設定",
-            "summary": "開啟 TizenTube 設定"
+            "title": "YouTube 設定",
+            "summary": "開啟 YouTube 設定"
         }
     },
     "welcomeMsg": {
-        "title": "歡迎使用 TizenTube",
-        "subtitle": "請前往設定，點選 TizenTube 設定以進行相關設定"
+        "title": "歡迎使用 YouTube",
+        "subtitle": "請前往設定，點選 YouTube 設定以進行相關設定"
     },
     "sponsorblock": {
         "segments": {
@@ -229,7 +229,7 @@
         "pictureInPicture": "Picture in Picture",
         "previous": "Previous",
         "next": "Next",
-        "withTizenTube": "with TizenTube",
+        "withTizenTube": "with YouTube",
         "share": {
             "title": "Share",
             "button": "Share",

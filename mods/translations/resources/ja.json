@@ -137,7 +137,7 @@
                     },
                     "launchToOnStartup": {
                         "title": "起動時に開くページ",
-                        "subtitle": "TizenTube の起動時にデフォルトで表示するページを選択してください"
+                        "subtitle": "YouTube の起動時にデフォルトで表示するページを選択してください"
                     },
                     "sortSubscriptionsByAlphabet": "登録しているチャンネルをアルファベット順に並べ替える",
                     "disableChannelsOnSidebar": "サイドバーのチャンネルを無効化する",
@@ -192,13 +192,13 @@
             }
         },
         "ttSettings": {
-            "title": "TizenTube の設定",
-            "summary": "TizenTube の設定を開きます"
+            "title": "YouTube の設定",
+            "summary": "YouTube の設定を開きます"
         }
     },
     "welcomeMsg": {
-        "title": "TizenTube へようこそ",
-        "subtitle": "設定画面から「TizenTube の設定」を選択して設定を行ってください。"
+        "title": "YouTube へようこそ",
+        "subtitle": "設定画面から「YouTube の設定」を選択して設定を行ってください。"
     },
     "sponsorblock": {
         "segments": {
@@ -229,7 +229,7 @@
         "pictureInPicture": "Picture in Picture",
         "previous": "Previous",
         "next": "Next",
-        "withTizenTube": "with TizenTube",
+        "withTizenTube": "with YouTube",
         "share": {
             "title": "Share",
             "button": "Share",

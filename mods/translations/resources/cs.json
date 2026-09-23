@@ -137,7 +137,7 @@
                     },
                     "launchToOnStartup": {
                         "title": "Spustit Na při Startu",
-                        "subtitle": "Zvolte výchozí stránku, na kterou TizenTube přejde při spuštění"
+                        "subtitle": "Zvolte výchozí stránku, na kterou YouTube přejde při spuštění"
                     },
                     "sortSubscriptionsByAlphabet": "Seřadit Odběry Abecedně",
                     "disableChannelsOnSidebar": "Zakázat Kanály v Postranním Panelu",
@@ -192,13 +192,13 @@
             }
         },
         "ttSettings": {
-            "title": "Nastavení TizenTube",
-            "summary": "Otevřít TizenTube Nastavení"
+            "title": "Nastavení YouTube",
+            "summary": "Otevřít YouTube Nastavení"
         }
     },
     "welcomeMsg": {
-        "title": "Vítejte v TizenTube",
-        "subtitle": "Pro nastavení přejděte na sekci nastavení a klikněte na Nastavení TizenTube."
+        "title": "Vítejte v YouTube",
+        "subtitle": "Pro nastavení přejděte na sekci nastavení a klikněte na Nastavení YouTube."
     },
     "sponsorblock": {
         "segments": {
@@ -229,7 +229,7 @@
         "pictureInPicture": "Picture in Picture",
         "previous": "Previous",
         "next": "Next",
-        "withTizenTube": "with TizenTube",
+        "withTizenTube": "with YouTube",
         "share": {
             "title": "Share",
             "button": "Share",

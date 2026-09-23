@@ -282,7 +282,7 @@ function execute_once_dom_loaded() {
 
   try {
     uiContainer.innerHTML = `
-<h1>TizenTube Theme Configuration</h1>
+<h1>YouTube Theme Configuration</h1>
 <label for="__barColor">Navigation Bar Color: <input type="text" id="__barColor"/></label>
 <label for="__routeColor">Main Content Color: <input type="text" id="__routeColor"/></label>
 <div><small>Sponsor segments skipping - https://sponsor.ajay.app</small></div>

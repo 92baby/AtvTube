@@ -227,15 +227,15 @@ function customAction(action, parameters) {
             window.h5vcc.tizentube.EnterPIP();
             break;
         case 'SHOW_TOAST':
-            showToast('TizenTube', parameters);
+            showToast('YouTube', parameters);
             break;
         case 'ADD_TO_QUEUE':
             window.queuedVideos.videos.push(parameters);
-            showToast('TizenTube', t('toasts.videoAddedToQueue'));
+            showToast('YouTube', t('toasts.videoAddedToQueue'));
             break;
         case 'CLEAR_QUEUE':
             window.queuedVideos.videos = [];
-            showToast('TizenTube', t('toasts.videoQueueCleared'));
+            showToast('YouTube', t('toasts.videoQueueCleared'));
             break;
         case 'GO_TO_CHANNEL':
             requestNextAndNavigateChannel(parameters);

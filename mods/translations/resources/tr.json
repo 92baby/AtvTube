@@ -137,7 +137,7 @@
                     },
                     "launchToOnStartup": {
                         "title": "Açılışta Başlatılacak Sayfa",
-                        "subtitle": "TizenTube'un açılışta varsayılan olarak açacağı sayfayı seçin"
+                        "subtitle": "YouTube'un açılışta varsayılan olarak açacağı sayfayı seçin"
                     },
                     "sortSubscriptionsByAlphabet": "Abonelikleri Alfabetik Sırala",
                     "disableChannelsOnSidebar": "Kenar Çubuğunda Kanalları Devre Dışı Bırak",
@@ -192,13 +192,13 @@
             }
         },
         "ttSettings": {
-            "title": "TizenTube Ayarları",
-            "summary": "TizenTube Ayarlarını Aç"
+            "title": "YouTube Ayarları",
+            "summary": "YouTube Ayarlarını Aç"
         }
     },
     "welcomeMsg": {
-        "title": "TizenTube'a Hoş Geldiniz",
-        "subtitle": "Ayarlar menüsüne gidip TizenTube Ayarları'na tıklayarak ayarları açabilirsiniz."
+        "title": "YouTube'a Hoş Geldiniz",
+        "subtitle": "Ayarlar menüsüne gidip YouTube Ayarları'na tıklayarak ayarları açabilirsiniz."
     },
     "sponsorblock": {
         "segments": {
@@ -229,7 +229,7 @@
         "pictureInPicture": "Resim İçinde Resim",
         "previous": "Önceki",
         "next": "Sonraki",
-        "withTizenTube": "TizenTube ile",
+        "withTizenTube": "YouTube ile",
         "share": {
             "title": "Paylaş",
             "button": "Paylaş",

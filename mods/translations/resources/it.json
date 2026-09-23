@@ -137,7 +137,7 @@
                     },
                     "launchToOnStartup": {
                         "title": "Lancia all'Avvio",
-                        "subtitle": "Seleziona la pagina che TizenTube aprirà all'avvio"
+                        "subtitle": "Seleziona la pagina che YouTube aprirà all'avvio"
                     },
                     "sortSubscriptionsByAlphabet": "Iscrizioni in ordine alfabetico",
                     "categories": {
@@ -192,13 +192,13 @@
             }
         },
         "ttSettings": {
-            "title": "Impostazioni TizenTube",
-            "summary": "Apri Impostazioni TizenTube"
+            "title": "Impostazioni YouTube",
+            "summary": "Apri Impostazioni YouTube"
         }
     },
     "welcomeMsg": {
-        "title": "Benvenuto in TizenTube",
-        "subtitle": "Vai su Impostazioni e seleziona Impostazioni TizenTube per la configurazione."
+        "title": "Benvenuto in YouTube",
+        "subtitle": "Vai su Impostazioni e seleziona Impostazioni YouTube per la configurazione."
     },
     "sponsorblock": {
         "segments": {
@@ -229,7 +229,7 @@
         "pictureInPicture": "Picture in Picture",
         "previous": "Previous",
         "next": "Next",
-        "withTizenTube": "with TizenTube",
+        "withTizenTube": "with YouTube",
         "share": {
             "title": "Share",
             "button": "Share",

@@ -51,7 +51,7 @@
                     "longPress": "Hosszan lenyomva tartott funkciók",
                     "shorts": "Short-ok bekapcsolása",
                     "videoPreviews": "Videó előnézet kapcsolása",
-                    "ttWelcomeMsg": "TizenTube indítóüzenet megjelenítése",
+                    "ttWelcomeMsg": "YouTube indítóüzenet megjelenítése",
                     "guestSignInReminder": "Vendég fiók bejelentkezés emlékeztető megjelenítése",
                     "reloadHomeOnStartup": "Kezdőképernyő újratöltése indításkor"
                 }
@@ -137,7 +137,7 @@
                     },
                     "launchToOnStartup": {
                         "title": "Kiválasztott kezdőoldal indításkor",
-                        "subtitle": "Válaszd ki azt az oldalt, amit a TizenTube nyit meg indításkor"
+                        "subtitle": "Válaszd ki azt az oldalt, amit a YouTube nyit meg indításkor"
                     },
                     "categories": {
                         "search": "Search",
@@ -192,13 +192,13 @@
             }
         },
         "ttSettings": {
-            "title": "TizenTube beállítások",
-            "summary": "Nyisd meg a TizenTube beállításokat"
+            "title": "YouTube beállítások",
+            "summary": "Nyisd meg a YouTube beállításokat"
         }
     },
     "welcomeMsg": {
-        "title": "Üdvözöl a TizenTube!",
-        "subtitle": "A testreszabáshoz navigálj a TizenTube beállításokra"
+        "title": "Üdvözöl a YouTube!",
+        "subtitle": "A testreszabáshoz navigálj a YouTube beállításokra"
     },
     "sponsorblock": {
         "segments": {
@@ -229,7 +229,7 @@
         "pictureInPicture": "Picture in Picture",
         "previous": "Previous",
         "next": "Next",
-        "withTizenTube": "with TizenTube",
+        "withTizenTube": "with YouTube",
         "share": {
             "title": "Share",
             "button": "Share",

@@ -53,7 +53,7 @@
                     "longPress": "Activează acțiunile la apăsare lungă",
                     "shorts": "Activează Shorts",
                     "videoPreviews": "Activează previzualizările video",
-                    "ttWelcomeMsg": "Afișează mesajul de bun venit TizenTube",
+                    "ttWelcomeMsg": "Afișează mesajul de bun venit YouTube",
                     "guestSignInReminder": "Afișează reamintirea de conectare ca oaspete",
                     "reloadHomeOnStartup": "Reîncarcă pagina principală la pornire"
                 }
@@ -139,7 +139,7 @@
                     },
                     "launchToOnStartup": {
                         "title": "Deschidere la pornire",
-                        "subtitle": "Alege pagina implicită pe care TizenTube o deschide la pornire"
+                        "subtitle": "Alege pagina implicită pe care YouTube o deschide la pornire"
                     },
                     "sortSubscriptionsByAlphabet": "Sortează abonamentele în ordine alfabetică",
                     "disableChannelsOnSidebar": "Dezactivează canalele din bara laterală",
@@ -194,13 +194,13 @@
             }
         },
         "ttSettings": {
-            "title": "Setări TizenTube",
-            "summary": "Deschide setările TizenTube"
+            "title": "Setări YouTube",
+            "summary": "Deschide setările YouTube"
         }
     },
     "welcomeMsg": {
-        "title": "Bine ai venit la TizenTube",
-        "subtitle": "Mergi la setări și dă click pe Setările TizenTube pentru opțiuni."
+        "title": "Bine ai venit la YouTube",
+        "subtitle": "Mergi la setări și dă click pe Setările YouTube pentru opțiuni."
     },
     "sponsorblock": {
         "segments": {
@@ -231,7 +231,7 @@
         "pictureInPicture": "Picture in Picture",
         "previous": "Previous",
         "next": "Next",
-        "withTizenTube": "with TizenTube",
+        "withTizenTube": "with YouTube",
         "share": {
             "title": "Share",
             "button": "Share",
