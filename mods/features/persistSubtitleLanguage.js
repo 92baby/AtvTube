@@ -1,5 +1,7 @@
 import { configRead, configWrite, configChangeEmitter } from '../config.js';
 import resolveCommand from '../resolveCommand.js';
+import { getUserCountryCode, getCountryLanguage } from './moreSubtitles.js';
+import languageNames from '../translations/language-names.js';
 
 const SELECTORS = {
     PLAYER: '.html5-video-player',
@@ -10,6 +12,24 @@ const CONFIG_KEYS = {
     CODE: 'preferredSubtitleLanguageCode',
     NAME: 'preferredSubtitleLanguageName',
 };
+
+// One-time flag: once the app has run the auto-default logic below a
+// single time (successfully or not), it never runs it again, so a user
+// who later turns persistence off — or picks a different language — is
+// never overridden by this again.
+const DEFAULT_INIT_KEY = 'subtitleLanguageDefaultInitialized';
+const DEFAULT_INIT_MAX_ATTEMPTS = 40; // ~20s at 500ms intervals
+const DEFAULT_INIT_POLL_INTERVAL_MS = 500;
+
+// When a video first loads, YouTube TV's own player can silently replay
+// the previous video's "captions off" state as a selectSubtitlesTrackCommand
+// with no translationLanguage — indistinguishable, by shape alone, from the
+// user actually clicking to turn captions off. We only treat such a command
+// as a genuine manual override once the new video has been underway longer
+// than this grace period, since native restores fire almost immediately on
+// load while a real user click happens later. This is a heuristic, not a
+// guarantee.
+const MANUAL_OVERRIDE_GRACE_PERIOD_MS = 3000;
 
 let isInternalApply = false;
 
@@ -115,6 +135,73 @@ function applyPreferredLanguage() {
     });
 }
 
+function guessLanguageFromNavigator() {
+    try {
+        const raw = navigator.language || 'en';
+        const code = raw.split('-')[0].toLowerCase();
+        const name =
+            languageNames.language.standard.long[code] || code;
+
+        return { code, name };
+    } catch (e) {
+        return null;
+    }
+}
+
+function resolveDeviceDefaultLanguage() {
+    try {
+        const countryCode = getUserCountryCode();
+
+        if (countryCode) {
+            const lang = getCountryLanguage(countryCode);
+
+            if (lang) {
+                return lang;
+            }
+        }
+    } catch (e) {
+    }
+
+    return guessLanguageFromNavigator();
+}
+
+// Runs at most once ever (gated by DEFAULT_INIT_KEY). On a fresh setup,
+// turns persistence on and seeds it with the device/region's language, the
+// same way it's inferred for the "add my local language" subtitle-menu
+// option elsewhere in this codebase. Deliberately never runs again after
+// that, so a later manual change to either the toggle or the language is
+// permanent and won't be reset back to this default.
+function initializeDefaultSubtitleLanguage(attempt = 0) {
+    if (configRead(DEFAULT_INIT_KEY)) {
+        return;
+    }
+
+    const lang = resolveDeviceDefaultLanguage();
+
+    // getUserCountryCode() depends on window.yt.config_.GL, which — like
+    // .HL used for UI language elsewhere — may not be populated yet this
+    // early in startup. Retry briefly before falling back permanently to
+    // whatever guessLanguageFromNavigator() can give us.
+    if (!lang && attempt < DEFAULT_INIT_MAX_ATTEMPTS) {
+        setTimeout(
+            () => initializeDefaultSubtitleLanguage(attempt + 1),
+            DEFAULT_INIT_POLL_INTERVAL_MS
+        );
+
+        return;
+    }
+
+    if (lang) {
+        configWrite(CONFIG_KEYS.ENABLED, true);
+        configWrite(CONFIG_KEYS.CODE, lang.code);
+        configWrite(CONFIG_KEYS.NAME, lang.name);
+    }
+
+    // Mark this done even on total failure to resolve a language, so we
+    // never keep retrying indefinitely on every app launch.
+    configWrite(DEFAULT_INIT_KEY, true);
+}
+
 class SubtitlePersistenceHandler {
     #player = null;
     #lastVideoId = null;
@@ -128,6 +215,11 @@ class SubtitlePersistenceHandler {
     // so the default language resumes applying with no extra reset
     // logic needed.
     #overriddenVideoId = null;
+    // Timestamp (Date.now()) of when the current #lastVideoId started
+    // being tracked. Used to tell a native "restore previous off state"
+    // command (fires right at load) apart from a real user click (fires
+    // later, after the grace period below has elapsed).
+    #videoStartTime = 0;
 
     constructor() {
         this.init();
@@ -226,6 +318,7 @@ class SubtitlePersistenceHandler {
 
         this.#lastVideoId = videoId;
         this.#scheduledVideoId = null;
+        this.#videoStartTime = Date.now();
 
         this.#clearTimers();
     }
@@ -417,16 +510,32 @@ class SubtitlePersistenceHandler {
                     } else if (
                         isNonTranslationSubtitleCommand(cmd)
                     ) {
-                        // User manually turned captions off or picked
-                        // a non-translated track: honour that for the
-                        // rest of THIS video (cancel any still-pending
-                        // auto-apply timers so they don't silently
-                        // undo the choice a few seconds later), but
-                        // don't touch the saved preferred language —
-                        // the next video still defaults to it.
                         const videoId = self.#getVideoId();
 
-                        if (videoId) {
+                        const elapsedSinceVideoStart =
+                            Date.now() - self.#videoStartTime;
+
+                        const looksLikeNativeRestore =
+                            videoId === self.#lastVideoId &&
+                            elapsedSinceVideoStart <
+                                MANUAL_OVERRIDE_GRACE_PERIOD_MS;
+
+                        if (looksLikeNativeRestore) {
+                            // Almost certainly YouTube TV replaying the
+                            // previous video's "captions off" state on
+                            // this new video, not a real click — ignore
+                            // it so the scheduled auto-apply below still
+                            // runs and turns translated captions back on.
+                        } else if (videoId) {
+                            // Past the grace period, so this is treated
+                            // as the user genuinely turning captions off
+                            // or picking a non-translated track: honour
+                            // that for the rest of THIS video (cancel any
+                            // still-pending auto-apply timers so they
+                            // don't silently undo the choice a few
+                            // seconds later), but don't touch the saved
+                            // preferred language — the next video still
+                            // defaults to it.
                             self.#overriddenVideoId = videoId;
                             self.#scheduledVideoId = null;
                             self.#clearTimers();
@@ -445,6 +554,15 @@ class SubtitlePersistenceHandler {
             clearInterval(interval);
         }, 500);
     }
+}
+
+try {
+    initializeDefaultSubtitleLanguage();
+} catch (e) {
+    console.error(
+        '[Subtitle Persistence] Default language init failed:',
+        e
+    );
 }
 
 try {

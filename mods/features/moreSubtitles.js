@@ -67,7 +67,7 @@ export function getCountryLanguage(countryCode) {
 let isPatched = false;
 
 // Function to get user's country code
-function getUserCountryCode() {
+export function getUserCountryCode() {
     try {
         // Always use window.yt.config_.GL as primary source
         if (window.yt && window.yt.config_ && window.yt.config_.GL) {
