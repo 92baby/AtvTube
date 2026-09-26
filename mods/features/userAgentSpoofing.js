@@ -60,15 +60,31 @@ function generateUserAgent(profile) {
 
 if (document.querySelector('.content-container') && window.h5vcc && window.h5vcc.tizentube && window.h5vcc.tizentube.SetUserAgent) {
     const ua = localStorage.getItem('userAgent');
+    const reloadPending = localStorage.getItem('userAgentReloadPending');
 
     if (ua) {
         window.h5vcc.tizentube.SetUserAgent(ua);
+
+        if (reloadPending !== '1') {
+            localStorage.setItem('userAgentReloadPending', '1');
+
+            setTimeout(function() {
+                location.reload();
+            }, 5000);
+        } else {
+            localStorage.removeItem('userAgentReloadPending');
+        }
     } else {
         const randomProfile = deviceProfiles[Math.floor(Math.random() * deviceProfiles.length)];
         const spoofedUserAgent = generateUserAgent(randomProfile);
 
         localStorage.setItem('userAgent', spoofedUserAgent);
+        localStorage.setItem('userAgentReloadPending', '1');
+
         window.h5vcc.tizentube.SetUserAgent(spoofedUserAgent);
-        location.reload();
+
+        setTimeout(function() {
+            location.reload();
+        }, 5000);
     }
 }
