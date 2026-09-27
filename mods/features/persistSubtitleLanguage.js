@@ -245,6 +245,47 @@ class SubtitlePersistenceHandler {
         }
     }
 
+    #isShowingPreferredTranslation() {
+        try {
+            const track = this.#player?.getOption?.(
+                'captions',
+                'track'
+            );
+
+            const code = configRead(CONFIG_KEYS.CODE);
+
+            if (!track || !code) {
+                return false;
+            }
+
+            return track.translationLanguageCode === code;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    #applyAndVerifyPreferredLanguage(videoId, attempt = 0) {
+        applyPreferredLanguage();
+
+        setTimeout(() => {
+            if (this.#getVideoId() !== videoId) {
+                return;
+            }
+
+            this.#captionsWereOn = this.#areCaptionsCurrentlyOn();
+
+            if (
+                !this.#isShowingPreferredTranslation() &&
+                attempt < 1
+            ) {
+                this.#applyAndVerifyPreferredLanguage(
+                    videoId,
+                    attempt + 1
+                );
+            }
+        }, CAPTIONS_SETTLE_DELAY_MS);
+    }
+
     #correctOnClosedToOpenTransition(videoId, wasOn, attempt = 0) {
         if (this.#getVideoId() !== videoId) {
 
@@ -263,7 +304,7 @@ class SubtitlePersistenceHandler {
                         return;
                     }
 
-                    applyPreferredLanguage();
+                    this.#applyAndVerifyPreferredLanguage(videoId);
                 }, CAPTIONS_SETTLE_DELAY_MS);
             }
 
@@ -326,15 +367,7 @@ class SubtitlePersistenceHandler {
                 return;
             }
 
-            applyPreferredLanguage();
-
-            setTimeout(() => {
-                if (this.#getVideoId() !== videoId) {
-                    return;
-                }
-
-                this.#captionsWereOn = this.#areCaptionsCurrentlyOn();
-            }, CAPTIONS_SETTLE_DELAY_MS);
+            this.#applyAndVerifyPreferredLanguage(videoId);
         }, AUTO_APPLY_DELAY_MS);
 
         this.#timers.push(timerId);
