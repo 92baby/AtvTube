@@ -33,6 +33,7 @@ const defaultConfig = {
   enablePersistSubtitleLanguage: false,
   preferredSubtitleLanguageCode: null,
   preferredSubtitleLanguageName: null,
+  subtitleLanguageDefaultInitialized: false,
   showWelcomeToast: true,
   enablePreviousNextButtons: true,
   enableSuperThanksButton: false,

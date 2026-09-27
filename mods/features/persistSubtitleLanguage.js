@@ -1,5 +1,7 @@
 import { configRead, configWrite, configChangeEmitter } from '../config.js';
 import resolveCommand from '../resolveCommand.js';
+import { getUserCountryCode, getCountryLanguage } from './moreSubtitles.js';
+import languageNames from '../translations/language-names.js';
 
 const SELECTORS = {
     PLAYER: '.html5-video-player',
@@ -10,6 +12,14 @@ const CONFIG_KEYS = {
     CODE: 'preferredSubtitleLanguageCode',
     NAME: 'preferredSubtitleLanguageName',
 };
+
+const DEFAULT_INIT_KEY = 'subtitleLanguageDefaultInitialized';
+const DEFAULT_INIT_MAX_ATTEMPTS = 40;
+const DEFAULT_INIT_POLL_INTERVAL_MS = 500;
+
+const CAPTIONS_SETTLE_DELAY_MS = 1000;
+
+const AUTO_APPLY_DELAY_MS = 3000;
 
 let isInternalApply = false;
 
@@ -115,19 +125,74 @@ function applyPreferredLanguage() {
     });
 }
 
+function guessLanguageFromNavigator() {
+    try {
+        const raw = navigator.language || 'en';
+        const code = raw.split('-')[0].toLowerCase();
+        const name =
+            languageNames.language.standard.long[code] || code;
+
+        return { code, name };
+    } catch (e) {
+        return null;
+    }
+}
+
+function resolveDeviceDefaultLanguage() {
+    try {
+        const countryCode = getUserCountryCode();
+
+        if (countryCode) {
+            const lang = getCountryLanguage(countryCode);
+
+            if (lang) {
+                return lang;
+            }
+        }
+    } catch (e) {
+    }
+
+    return guessLanguageFromNavigator();
+}
+
+function initializeDefaultSubtitleLanguage(attempt = 0) {
+    if (configRead(DEFAULT_INIT_KEY)) {
+        return;
+    }
+
+    const lang = resolveDeviceDefaultLanguage();
+
+    if (!lang && attempt < DEFAULT_INIT_MAX_ATTEMPTS) {
+        setTimeout(
+            () => initializeDefaultSubtitleLanguage(attempt + 1),
+            DEFAULT_INIT_POLL_INTERVAL_MS
+        );
+
+        return;
+    }
+
+    if (lang) {
+        configWrite(CONFIG_KEYS.ENABLED, true);
+        configWrite(CONFIG_KEYS.CODE, lang.code);
+        configWrite(CONFIG_KEYS.NAME, lang.name);
+    }
+
+    configWrite(DEFAULT_INIT_KEY, true);
+}
+
 class SubtitlePersistenceHandler {
     #player = null;
     #lastVideoId = null;
     #scheduledVideoId = null;
     #timers = [];
     #isPatched = false;
-    // The video id the user manually overrode captions for (turned
-    // them off, or picked a non-translated track) while persistence
-    // was on. Scoped to a single video id on purpose: once the video
-    // changes, this is simply never equal to the new video id again,
-    // so the default language resumes applying with no extra reset
-    // logic needed.
+
     #overriddenVideoId = null;
+
+    #captionsWereOn = false;
+
+    #captionsBaselineReady = false;
+    #captionsBaselineTimerId = null;
 
     constructor() {
         this.init();
@@ -165,6 +230,59 @@ class SubtitlePersistenceHandler {
         }
     }
 
+    #areCaptionsCurrentlyOn() {
+        try {
+            const track = this.#player?.getOption?.(
+                'captions',
+                'track'
+            );
+
+            return !!(track && track.languageCode);
+        } catch (e) {
+            return false;
+        }
+    }
+
+    #correctOnClosedToOpenTransition(videoId, wasOn, attempt = 0) {
+        if (this.#getVideoId() !== videoId) {
+
+            return;
+        }
+
+        const isOnNow = this.#areCaptionsCurrentlyOn();
+
+        if (isOnNow) {
+            this.#captionsWereOn = true;
+
+            if (!wasOn) {
+
+                setTimeout(() => {
+                    if (this.#getVideoId() !== videoId) {
+                        return;
+                    }
+
+                    applyPreferredLanguage();
+                }, CAPTIONS_SETTLE_DELAY_MS);
+            }
+
+            return;
+        }
+
+        if (attempt < 2) {
+            setTimeout(() => {
+                this.#correctOnClosedToOpenTransition(
+                    videoId,
+                    wasOn,
+                    attempt + 1
+                );
+            }, CAPTIONS_SETTLE_DELAY_MS);
+
+            return;
+        }
+
+        this.#captionsWereOn = false;
+    }
+
     #clearTimers() {
         for (const timerId of this.#timers) {
             clearTimeout(timerId);
@@ -182,9 +300,6 @@ class SubtitlePersistenceHandler {
             return;
         }
 
-        // The user already chose something else for this specific
-        // video (see the resolveCommand wrapper below) — respect that
-        // for the rest of this video instead of fighting it.
         if (videoId === this.#overriddenVideoId) {
             return;
         }
@@ -210,7 +325,15 @@ class SubtitlePersistenceHandler {
             }
 
             applyPreferredLanguage();
-        }, 3000);
+
+            setTimeout(() => {
+                if (this.#getVideoId() !== videoId) {
+                    return;
+                }
+
+                this.#captionsWereOn = this.#areCaptionsCurrentlyOn();
+            }, CAPTIONS_SETTLE_DELAY_MS);
+        }, AUTO_APPLY_DELAY_MS);
 
         this.#timers.push(timerId);
     }
@@ -226,6 +349,21 @@ class SubtitlePersistenceHandler {
 
         this.#lastVideoId = videoId;
         this.#scheduledVideoId = null;
+        this.#captionsWereOn = false;
+        this.#captionsBaselineReady = false;
+
+        if (this.#captionsBaselineTimerId !== null) {
+            clearTimeout(this.#captionsBaselineTimerId);
+        }
+
+        this.#captionsBaselineTimerId = setTimeout(() => {
+            if (this.#getVideoId() !== videoId) {
+                return;
+            }
+
+            this.#captionsWereOn = this.#areCaptionsCurrentlyOn();
+            this.#captionsBaselineReady = true;
+        }, AUTO_APPLY_DELAY_MS);
 
         this.#clearTimers();
     }
@@ -326,6 +464,8 @@ class SubtitlePersistenceHandler {
 
                 this.#scheduledVideoId = null;
                 this.#overriddenVideoId = null;
+                this.#captionsWereOn = this.#areCaptionsCurrentlyOn();
+                this.#captionsBaselineReady = true;
                 this.#clearTimers();
 
                 if (
@@ -417,19 +557,20 @@ class SubtitlePersistenceHandler {
                     } else if (
                         isNonTranslationSubtitleCommand(cmd)
                     ) {
-                        // User manually turned captions off or picked
-                        // a non-translated track: honour that for the
-                        // rest of THIS video (cancel any still-pending
-                        // auto-apply timers so they don't silently
-                        // undo the choice a few seconds later), but
-                        // don't touch the saved preferred language —
-                        // the next video still defaults to it.
                         const videoId = self.#getVideoId();
 
                         if (videoId) {
+
                             self.#overriddenVideoId = videoId;
                             self.#scheduledVideoId = null;
                             self.#clearTimers();
+
+                            if (self.#captionsBaselineReady) {
+                                self.#correctOnClosedToOpenTransition(
+                                    videoId,
+                                    self.#captionsWereOn
+                                );
+                            }
                         }
                     }
                 }
@@ -445,6 +586,15 @@ class SubtitlePersistenceHandler {
             clearInterval(interval);
         }, 500);
     }
+}
+
+try {
+    initializeDefaultSubtitleLanguage();
+} catch (e) {
+    console.error(
+        '[Subtitle Persistence] Default language init failed:',
+        e
+    );
 }
 
 try {

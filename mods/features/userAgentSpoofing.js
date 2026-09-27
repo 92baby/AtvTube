@@ -58,16 +58,33 @@ function generateUserAgent(profile) {
     return `Mozilla/5.0 (${profile.architecture}; ${profile.os}) Cobalt/${cobaltVersion} (unlike Gecko) ${v8Version} ${profile.rasterizer} Starboard/${starboardVersion}, ${profile.manufacturer}_${profile.deviceType}_${profile.chipsetModel}_${profile.modelYear}/${profile.firmwareVersion} (${profile.brand}, ${profile.model}) ${auxField}`;
 }
 
+// NOTE ON THE FIX:
+// Previously this block re-ran window.h5vcc.tizentube.SetUserAgent(...) + location.reload()
+// on every single document load whenever a UA was already stored in localStorage. Since
+// SetUserAgent only affects the current process's NetworkModule (it does NOT persist across
+// a location.reload() re-check, only across a real process restart via the native
+// persistent_settings read in NetworkModule::Initialize), reapplying + reloading on every
+// load produced an infinite reload loop that looked identical to being "stuck" on the
+// device-authorization screen.
+//
+// sessionStorage survives location.reload() within the same process/session but is cleared
+// on a real app restart, so it's the correct primitive for "have I already applied + reloaded
+// once in this running process" — as opposed to localStorage, which only tells you "has a UA
+// ever been generated" and stays true forever once set.
 if (document.querySelector('.content-container') && window.h5vcc && window.h5vcc.tizentube && window.h5vcc.tizentube.SetUserAgent) {
-    const ua = localStorage.getItem('userAgent');
-    if (ua) {
+    let ua = localStorage.getItem('userAgent');
+
+    if (!ua) {
+        const randomProfile = deviceProfiles[Math.floor(Math.random() * deviceProfiles.length)];
+        ua = generateUserAgent(randomProfile);
+        localStorage.setItem('userAgent', ua);
+    }
+
+    if (!sessionStorage.getItem('uaApplied')) {
+        sessionStorage.setItem('uaApplied', '1');
         window.h5vcc.tizentube.SetUserAgent(ua);
         location.reload();
     }
-
-    const randomProfile = deviceProfiles[Math.floor(Math.random() * deviceProfiles.length)];
-    const spoofedUserAgent = generateUserAgent(randomProfile);
-    localStorage.setItem('userAgent', spoofedUserAgent);
-    window.h5vcc.tizentube.SetUserAgent(spoofedUserAgent);
-    location.reload();
+    // else: UA has already been applied and the page already reloaded once during this
+    // process's lifetime — do nothing further, let the page continue loading normally.
 }
