@@ -21,6 +21,8 @@ const CAPTIONS_SETTLE_DELAY_MS = 1000;
 
 const AUTO_APPLY_DELAY_MS = 3000;
 
+const BASELINE_CHECK_DELAY_MS = 2000;
+
 let isInternalApply = false;
 
 function getCurrentPlayer() {
@@ -361,9 +363,15 @@ class SubtitlePersistenceHandler {
                 return;
             }
 
-            this.#captionsWereOn = this.#areCaptionsCurrentlyOn();
+            const isOn = this.#areCaptionsCurrentlyOn();
+
+            this.#captionsWereOn = isOn;
             this.#captionsBaselineReady = true;
-        }, AUTO_APPLY_DELAY_MS);
+
+            if (!isOn) {
+                this.#clearTimers();
+            }
+        }, BASELINE_CHECK_DELAY_MS);
 
         this.#clearTimers();
     }
