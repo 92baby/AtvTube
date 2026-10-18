@@ -21,8 +21,6 @@ const CAPTIONS_SETTLE_DELAY_MS = 1000;
 
 const AUTO_APPLY_DELAY_MS = 3000;
 
-const BASELINE_CHECK_DELAY_MS = 2000;
-
 let isInternalApply = false;
 
 function getCurrentPlayer() {
@@ -385,26 +383,9 @@ class SubtitlePersistenceHandler {
         this.#lastVideoId = videoId;
         this.#scheduledVideoId = null;
         this.#captionsWereOn = false;
-        this.#captionsBaselineReady = false;
-
-        if (this.#captionsBaselineTimerId !== null) {
-            clearTimeout(this.#captionsBaselineTimerId);
-        }
-
-        this.#captionsBaselineTimerId = setTimeout(() => {
-            if (this.#getVideoId() !== videoId) {
-                return;
-            }
-
-            const isOn = this.#areCaptionsCurrentlyOn();
-
-            this.#captionsWereOn = isOn;
-            this.#captionsBaselineReady = true;
-
-            if (!isOn) {
-                this.#clearTimers();
-            }
-        }, BASELINE_CHECK_DELAY_MS);
+        // No baseline probe: always let the scheduled apply run.
+        // (Ready immediately so the CC off->on correction hook still works.)
+        this.#captionsBaselineReady = true;
 
         this.#clearTimers();
     }
