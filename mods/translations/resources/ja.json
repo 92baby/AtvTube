@@ -61,7 +61,7 @@
                 "options": {
                     "showLocalSubtitle": "ローカルの字幕を表示する",
                     "showHiddenSubtitles": "非表示されている字幕を表示する",
-                    "persistSubtitleLanguage": "翻訳字幕の言語を記憶する"
+                    "persistSubtitleLanguage": "字幕の言語を記憶する"
                 }
             },
             "videoPlayer": {

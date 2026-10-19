@@ -61,7 +61,7 @@
                 "options": {
                     "showLocalSubtitle": "عرض الترجمات المحلية",
                     "showHiddenSubtitles": "عرض الترجمات المخفية",
-                    "persistSubtitleLanguage": "تذكّر لغة الترجمة المُترجَمة"
+                    "persistSubtitleLanguage": "تذكّر لغة الترجمة"
                 }
             },
             "videoPlayer": {

@@ -61,7 +61,7 @@
                 "options": {
                     "showLocalSubtitle": "Yerel Altyazıyı Göster",
                     "showHiddenSubtitles": "Gizli Altyazıları Göster",
-                    "persistSubtitleLanguage": "Çevrilmiş Altyazı Dilini Hatırla"
+                    "persistSubtitleLanguage": "Altyazı Dilini Hatırla"
                 }
             },
             "videoPlayer": {

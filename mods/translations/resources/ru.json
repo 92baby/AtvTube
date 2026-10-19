@@ -61,7 +61,7 @@
                 "options": {
                     "showLocalSubtitle": "Показывать локальные субтитры",
                     "showHiddenSubtitles": "Показывать скрытые субтитры",
-                    "persistSubtitleLanguage": "Запоминать язык переведённых субтитров"
+                    "persistSubtitleLanguage": "Запоминать язык субтитров"
                 }
             },
             "videoPlayer": {

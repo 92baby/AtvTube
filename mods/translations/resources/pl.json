@@ -61,7 +61,7 @@
                 "options": {
                     "showLocalSubtitle": "Pokaż lokalne napisy",
                     "showHiddenSubtitles": "Pokaż ukryte napisy",
-                    "persistSubtitleLanguage": "Zapamiętaj język przetłumaczonych napisów"
+                    "persistSubtitleLanguage": "Zapamiętaj język napisów"
                 }
             },
             "videoPlayer": {

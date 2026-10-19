@@ -61,7 +61,7 @@
                 "options": {
                     "showLocalSubtitle": "Rodyti vietinius subtitrus",
                     "showHiddenSubtitles": "Rodyti paslėptus subtitrus",
-                    "persistSubtitleLanguage": "Įsiminti išverstų subtitrų kalbą"
+                    "persistSubtitleLanguage": "Įsiminti subtitrų kalbą"
                 }
             },
             "videoPlayer": {

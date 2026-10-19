@@ -63,7 +63,7 @@
                 "options": {
                     "showLocalSubtitle": "Afișează subtitrarea locală",
                     "showHiddenSubtitles": "Afișează subtitrările ascunse",
-                    "persistSubtitleLanguage": "Reține limba subtitrărilor traduse"
+                    "persistSubtitleLanguage": "Reține limba subtitrărilor"
                 }
             },
             "videoPlayer": {
