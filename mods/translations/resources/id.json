@@ -61,7 +61,7 @@
                 "options": {
                     "showLocalSubtitle": "Tampilkan Subtitle Lokal",
                     "showHiddenSubtitles": "Tampilkan Subtitle Tersembunyi",
-                    "persistSubtitleLanguage": "Ingat Bahasa Subtitle Terjemahan"
+                    "persistSubtitleLanguage": "Ingat Bahasa Subtitle"
                 }
             },
             "videoPlayer": {

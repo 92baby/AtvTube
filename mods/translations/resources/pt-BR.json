@@ -61,7 +61,7 @@
                 "options": {
                     "showLocalSubtitle": "Mostrar Legendas Locais",
                     "showHiddenSubtitles": "Mostrar Legendas Ocultas",
-                    "persistSubtitleLanguage": "Lembrar Idioma das Legendas Traduzidas"
+                    "persistSubtitleLanguage": "Lembrar Idioma das Legendas"
                 }
             },
             "videoPlayer": {

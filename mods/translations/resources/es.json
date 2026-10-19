@@ -61,7 +61,7 @@
                 "options": {
                     "showLocalSubtitle": "Mostrar subtítulos locales",
                     "showHiddenSubtitles": "Mostrar subtítulos ocultos",
-                    "persistSubtitleLanguage": "Recordar idioma de subtítulos traducidos"
+                    "persistSubtitleLanguage": "Recordar idioma de subtítulos"
                 }
             },
             "videoPlayer": {

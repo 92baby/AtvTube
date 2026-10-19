@@ -15,7 +15,6 @@ import BosnianResource from './resources/bs.json';
 import CroatianResource from './resources/hr.json';
 import SerbianLatinResource from './resources/sr-Latn.json';
 import SerbianCyrillicResource from './resources/sr-Cyrl.json';
-import KlingonResource from './resources/tlh.json';
 import BrazilianPortugueseResource from './resources/pt-BR.json';
 import RussianResource from './resources/ru.json';
 import LithuanianResource from './resources/lt.json';
@@ -29,6 +28,8 @@ import ChineseSimplifiedResource from './resources/zh-CN.json';
 import CzechResource from './resources/cs.json';
 import PolishResource from './resources/pl.json';
 import ArabicResource from './resources/ar.json';
+import KoreanResource from './resources/ko.json';
+import ThaiResource from './resources/th.json';
 
 export default {
     da: {
@@ -82,8 +83,11 @@ export default {
     sr: {
         translation: SerbianCyrillicResource
     },
-    tlh: {
-        translation: KlingonResource
+    ko: {
+        translation: KoreanResource
+    },
+    th: {
+        translation: ThaiResource
     },
     "pt-BR": {
         translation: BrazilianPortugueseResource

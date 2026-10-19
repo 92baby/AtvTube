@@ -62,7 +62,7 @@
                 "options": {
                     "showLocalSubtitle": "Hiển thị phụ đề cục bộ",
                     "showHiddenSubtitles": "Hiển thị phụ đề bị ẩn",
-                    "persistSubtitleLanguage": "Ghi nhớ ngôn ngữ phụ đề đã dịch"
+                    "persistSubtitleLanguage": "Ghi nhớ ngôn ngữ phụ đề"
                 }
             },
             "videoPlayer": {

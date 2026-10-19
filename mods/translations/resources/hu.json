@@ -61,7 +61,7 @@
                 "options": {
                     "showLocalSubtitle": "Helyi feliratok megjelenítése",
                     "showHiddenSubtitles": "Rejtett feliratok megjelenítése",
-                    "persistSubtitleLanguage": "Lefordított feliratok nyelvének megjegyzése"
+                    "persistSubtitleLanguage": "Feliratok nyelvének megjegyzése"
                 }
             },
             "videoPlayer": {

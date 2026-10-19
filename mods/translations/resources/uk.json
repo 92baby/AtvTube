@@ -61,7 +61,7 @@
                 "options": {
                     "showLocalSubtitle": "Показувати локальні субтитри",
                     "showHiddenSubtitles": "Показувати приховані субтитри",
-                    "persistSubtitleLanguage": "Запам'ятовувати мову перекладених субтитрів"
+                    "persistSubtitleLanguage": "Запам'ятовувати мову субтитрів"
                 }
             },
             "videoPlayer": {

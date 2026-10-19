@@ -588,7 +588,6 @@ export default {
                 "tkl": "Tokelau",
                 "tkr": "Tsakhur",
                 "tl": "Tagalog",
-                "tlh": "Klingon",
                 "tli": "Tlingit",
                 "tly": "Talysh",
                 "tmh": "Tamashek",

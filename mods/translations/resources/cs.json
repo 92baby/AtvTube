@@ -61,7 +61,7 @@
                 "options": {
                     "showLocalSubtitle": "Zobrazovat Lokální Titulky",
                     "showHiddenSubtitles": "Zobrazovat Skryté Titulky",
-                    "persistSubtitleLanguage": "Zapamatovat Jazyk Přeložených Titulků"
+                    "persistSubtitleLanguage": "Zapamatovat Jazyk Titulků"
                 }
             },
             "videoPlayer": {

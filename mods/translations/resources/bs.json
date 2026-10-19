@@ -61,7 +61,7 @@
                 "options": {
                     "showLocalSubtitle": "Prikaži lokalne titlove",
                     "showHiddenSubtitles": "Prikaži skrivene titlove",
-                    "persistSubtitleLanguage": "Zapamti jezik prevedenih titlova"
+                    "persistSubtitleLanguage": "Zapamti jezik titlova"
                 }
             },
             "videoPlayer": {

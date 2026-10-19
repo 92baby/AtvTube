@@ -61,7 +61,7 @@
                 "options": {
                     "showLocalSubtitle": "Εμφάνιση τοπικών υπότιτλων",
                     "showHiddenSubtitles": "Εμφάνιση κρυφών υπότιτλων",
-                    "persistSubtitleLanguage": "Απομνημόνευση γλώσσας μεταφρασμένων υπότιτλων"
+                    "persistSubtitleLanguage": "Απομνημόνευση γλώσσας υποτίτλων"
                 }
             },
             "videoPlayer": {

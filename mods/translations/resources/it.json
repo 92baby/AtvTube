@@ -61,7 +61,7 @@
                 "options": {
                     "showLocalSubtitle": "Mostra Sottotitoli Locali",
                     "showHiddenSubtitles": "Mostra Sottotitoli Nascosti",
-                    "persistSubtitleLanguage": "Ricorda Lingua dei Sottotitoli Tradotti"
+                    "persistSubtitleLanguage": "Ricorda Lingua dei Sottotitoli"
                 }
             },
             "videoPlayer": {

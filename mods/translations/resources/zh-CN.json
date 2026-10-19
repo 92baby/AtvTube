@@ -61,7 +61,7 @@
                 "options": {
                     "showLocalSubtitle": "显示本地字幕",
                     "showHiddenSubtitles": "显示隐藏字幕",
-                    "persistSubtitleLanguage": "记住翻译字幕语言"
+                    "persistSubtitleLanguage": "记住字幕语言"
                 }
             },
             "videoPlayer": {

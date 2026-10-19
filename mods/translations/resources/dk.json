@@ -61,7 +61,7 @@
                 "options": {
                     "showLocalSubtitle": "Vis Lokale Undertekster",
                     "showHiddenSubtitles": "Vis Skjulte Undertekster",
-                    "persistSubtitleLanguage": "Husk Sprog for Oversatte Undertekster"
+                    "persistSubtitleLanguage": "Husk Sprog for Undertekster"
                 }
             },
             "videoPlayer": {

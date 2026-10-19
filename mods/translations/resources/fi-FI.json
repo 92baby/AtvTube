@@ -61,7 +61,7 @@
                 "options": {
                     "showLocalSubtitle": "Näytä paikallinen tekstitys",
                     "showHiddenSubtitles": "Näytä piilotetut tekstitykset",
-                    "persistSubtitleLanguage": "Muista käännettyjen tekstitysten kieli"
+                    "persistSubtitleLanguage": "Muista tekstitysten kieli"
                 }
             },
             "videoPlayer": {
