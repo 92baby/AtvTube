@@ -7,6 +7,7 @@ import { t } from 'i18next';
 import { requestNextAndNavigateChannel } from './utils/innerTubeCalls.js';
 import qrcode from 'qrcode-npm';
 import showGuideSettings from './ui/sidebarModification.js';
+import { startDeviceAuth } from './features/deviceAuth.js';
 
 export default function resolveCommand(cmd, _) {
     // resolveCommand function is pretty OP, it can do from opening modals, changing client settings and way more.
@@ -286,6 +287,9 @@ function customAction(action, parameters) {
             }
             configWrite('sidebarContentsOrder', sortedSidebarContents);
             showToast(t('toasts.sidebarContentsUpdated.title'), t('toasts.sidebarContentsUpdated.subtitle'));
+            break;
+        case 'DEVICE_AUTH':
+            startDeviceAuth();
             break;
         case 'SCREEN_OFF':
             for (const child of document.body.children) {

@@ -2,6 +2,7 @@ import { configRead } from '../config.js';
 import { showModal, buttonItem, overlayPanelItemListRenderer } from './ytUI.js';
 import { t } from 'i18next';
 import resolveCommand from '../resolveCommand.js';
+import { getAuthStatusLabel } from '../features/deviceAuth.js';
 
 export default function modernUI(update, parameters) {
     const settings = [
@@ -683,6 +684,16 @@ export default function modernUI(update, parameters) {
                     icon: null,
                 }
             ]
+        },
+        {
+            name: getAuthStatusLabel(),
+            icon: 'ACCOUNT_CIRCLE',
+            value: null,
+            action: {
+                customAction: {
+                    action: 'DEVICE_AUTH'
+                }
+            }
         }
     ];
 

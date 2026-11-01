@@ -4,6 +4,8 @@ import "core-js/proposals/object-getownpropertydescriptors";
 
 import './translations/index.js'
 import "./domrect-polyfill";
+import { initAuthOnStartup } from "./features/deviceAuth.js";
+initAuthOnStartup();
 import "./features/adblock.js";
 import "./features/sponsorblock.js";
 import "./ui/ui.js";
