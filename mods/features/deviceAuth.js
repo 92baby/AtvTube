@@ -26,7 +26,7 @@ const AUTH_BASE = 'https://tv.tubegpt.de5.net';
 const PROMPT_INTERVAL_MS = 5 * 60 * 1000;
 
 /** 首次启动延迟再弹，避免一进应用就挡画面（毫秒） */
-const FIRST_PROMPT_DELAY_MS = 60 * 1000;
+const FIRST_PROMPT_DELAY_MS = 5 * 60 * 1000;
 
 const TOKEN_KEY = 'tt_access_token';
 
