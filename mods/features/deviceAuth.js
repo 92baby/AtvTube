@@ -279,11 +279,12 @@ function buildQrImageUrl(content) {
 
 function showPayModal(opts) {
   const minutes = Math.max(1, Math.round((opts.expiresIn || 1800) / 60));
-  // 精简布局：码在上、文字少，减少拥挤、便于扫描
+  // 精简布局：码在上、文字少；说明授权后不再打扰
   const lines = [
     QrCodeRenderer(buildQrImageUrl(opts.codeUrl)),
     overlayMessageRenderer('¥' + opts.amountYuan + ' · 手机扫码支付'),
-    overlayMessageRenderer(minutes + ' 分钟内有效 · 返回键关闭')
+    overlayMessageRenderer(minutes + ' 分钟内有效 · 返回键关闭'),
+    overlayMessageRenderer('授权成功后播放中将不再弹出')
   ];
   showModal(
     {
@@ -327,7 +328,7 @@ function pollForToken(deviceCode, interval, expiresIn) {
         stopPrompts();
         resetPromptState();
         closeAuthModalSoft();
-        showToast('授权成功！本机已激活', '');
+        showToast('授权成功！本机已激活，播放中将不再弹出', '');
         try {
           window.dispatchEvent(
             new CustomEvent('tt-auth-success', {
