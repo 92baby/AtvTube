@@ -1,34 +1,24 @@
 /**
  * 设备授权（支付扫码）
  * - 不限制任何 JS 功能
- * - 未激活：启动约 5 分钟后首次弹窗，之后每 5 分钟一次（可选：仅在观看页）
+ * - 未激活：启动约 5 分钟后首次弹窗，之后每 5 分钟一次（默认仅观看页）
  * - 已激活：不再自动弹；设置里再点只提示已授权
- * - 手动点「设备授权」可反复打开（不依赖重启 APP）
- * - 遥控器返回/Back 关闭弹窗时会结束轮询，允许再次打开
+ * - 手动可反复打开；返回键关闭后可再次打开
+ * - 弹窗：标题/副标题 + 二维码在上、说明在下（避免 SIDESHEET 样式盖住文字）
  */
 
 import {
   showToast,
   showModal,
-  QrCodeRenderer,
   overlayPanelItemListRenderer,
   overlayMessageRenderer
 } from '../ui/ytUI.js';
 
 const AUTH_BASE = 'https://tv.tubegpt.de5.net';
 
-/** 未激活时弹窗间隔 */
 const PROMPT_INTERVAL_MS = 5 * 60 * 1000;
-
-/** 启动后多久第一次自动弹 */
 const FIRST_PROMPT_DELAY_MS = 5 * 60 * 1000;
-
-/**
- * true = 仅在观看视频页（url 含 watch）才自动弹
- * false = 任意界面到点都弹
- */
 const AUTO_PROMPT_ONLY_ON_WATCH = true;
-
 const TOKEN_KEY = 'tt_access_token';
 
 let authCache = null;
@@ -141,8 +131,7 @@ function schedulePrompts(withFirstDelay) {
 
 function isWatchPage() {
   try {
-    const href = String(window.location.href || '');
-    return href.indexOf('watch') >= 0;
+    return String(window.location.href || '').indexOf('watch') >= 0;
   } catch (_) {
     return true;
   }
@@ -151,9 +140,7 @@ function isWatchPage() {
 async function maybeShowPayPrompt() {
   if (authCache === true) return;
   if (promptInFlight) return;
-  if (AUTO_PROMPT_ONLY_ON_WATCH && !isWatchPage()) {
-    return;
-  }
+  if (AUTO_PROMPT_ONLY_ON_WATCH && !isWatchPage()) return;
   if (getAccessToken()) {
     const ok = await checkAuth();
     if (ok) {
@@ -164,15 +151,10 @@ async function maybeShowPayPrompt() {
   startDeviceAuth({ fromTimer: true });
 }
 
-/**
- * 设置手动点击 或 定时器
- * 手动点击会强制结束上一轮轮询，可反复打开
- */
 export async function startDeviceAuth(opts) {
   opts = opts || {};
   const fromTimer = !!opts.fromTimer;
 
-  // 手动打开：始终允许，清掉卡住的 inFlight
   if (!fromTimer) {
     stopPolling();
     promptInFlight = false;
@@ -230,19 +212,12 @@ export async function startDeviceAuth(opts) {
     return;
   }
 
-  // 先尝试关掉可能残留的弹层，再展示，减轻「说明和码叠在一起」
   try {
-    closeAuthModalSoft();
-  } catch (_) {}
-
-  try {
-    await delay(120);
     showPayModal({
       codeUrl: data.code_url,
       amountYuan: data.amount_yuan || formatYuan(data.amount),
       description: data.description || '设备永久授权',
-      expiresIn: data.expires_in || 1800,
-      outTradeNo: data.out_trade_no || ''
+      expiresIn: data.expires_in || 1800
     });
   } catch (err) {
     console.error('[DeviceAuth] 弹窗失败:', err);
@@ -259,12 +234,6 @@ export async function startDeviceAuth(opts) {
   pollForToken(data.device_code, data.interval || 5, data.expires_in || 1800);
 }
 
-function delay(ms) {
-  return new Promise(function (resolve) {
-    setTimeout(resolve, ms);
-  });
-}
-
 function formatYuan(amountFen) {
   if (amountFen == null || amountFen === '') return '--';
   return (Number(amountFen) / 100).toFixed(2);
@@ -277,15 +246,30 @@ function buildQrImageUrl(content) {
   );
 }
 
+/**
+ * 不使用 ATA_SIDESHEET：该样式常把码画在侧栏/全幅，与列表文字叠在一起。
+ * 作为普通列表项，顺序为：码 → 下方文字。
+ */
+function qrCodeListItem(imageUrl) {
+  return {
+    qrCodeRenderer: {
+      qrCodeImage: {
+        thumbnails: [{ url: imageUrl }]
+      },
+      trackingParams: null
+    }
+  };
+}
+
 function showPayModal(opts) {
   const minutes = Math.max(1, Math.round((opts.expiresIn || 1800) / 60));
-  // 精简布局：码在上、文字少；说明授权后不再打扰
   const lines = [
-    QrCodeRenderer(buildQrImageUrl(opts.codeUrl)),
+    qrCodeListItem(buildQrImageUrl(opts.codeUrl)),
     overlayMessageRenderer('¥' + opts.amountYuan + ' · 手机扫码支付'),
     overlayMessageRenderer(minutes + ' 分钟内有效 · 返回键关闭'),
     overlayMessageRenderer('授权成功后播放中将不再弹出')
   ];
+
   showModal(
     {
       title: '设备授权',
@@ -327,7 +311,6 @@ function pollForToken(deviceCode, interval, expiresIn) {
         authCache = true;
         stopPrompts();
         resetPromptState();
-        closeAuthModalSoft();
         showToast('授权成功！本机已激活，播放中将不再弹出', '');
         try {
           window.dispatchEvent(
@@ -360,20 +343,9 @@ function resetPromptState() {
   promptInFlight = false;
 }
 
-/** 模拟 ESC，尽量关掉 YT 弹层（不保证 100%） */
-function closeAuthModalSoft() {
-  try {
-    const kE = document.createEvent('Event');
-    kE.initEvent('keydown', true, true);
-    kE.keyCode = 27;
-    kE.which = 27;
-    document.dispatchEvent(kE);
-  } catch (e) {}
-}
-
 /**
- * 遥控器返回 / Back / ESC：结束本轮支付轮询，允许再次打开授权窗
- * 常见键值：27 ESC，461/10009 部分 TV Back
+ * 仅复位业务状态，不向页面注入 ESC（注入 ESC 容易造成「要按两次返回」）。
+ * 真正关弹窗交给遥控器返回，由 YouTube 处理。
  */
 function ensureDismissKeyListener() {
   if (keyListenerAttached) return;
@@ -392,9 +364,9 @@ function ensureDismissKeyListener() {
         key === 'Backspace';
       if (!isBack) return;
       if (!promptInFlight && !pollTimer) return;
+      // 只清轮询/锁，不 stopPropagation，让第一次返回就能关掉 YT 弹层
       stopPolling();
       resetPromptState();
-      // 不拦截事件，让 YT 自己关掉弹层
     },
     true
   );
