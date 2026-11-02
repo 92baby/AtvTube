@@ -241,14 +241,15 @@ function formatYuan(amountFen) {
 
 function buildQrImageUrl(content) {
   return (
-    'https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=8&data=' +
+    'https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=8&data=' +
     encodeURIComponent(content)
   );
 }
 
 /**
- * 不使用 ATA_SIDESHEET：该样式常把码画在侧栏/全幅，与列表文字叠在一起。
- * 作为普通列表项，顺序为：码 → 下方文字。
+ * 使用 SIDESHEET 以获得较大二维码。
+ * 该样式会占满内容区，若在同一列表再放 overlayMessage 极易与码重叠。
+ * 因此内容区只放二维码；金额/时限/说明全部放进标题与副标题。
  */
 function qrCodeListItem(imageUrl) {
   return {
@@ -256,26 +257,21 @@ function qrCodeListItem(imageUrl) {
       qrCodeImage: {
         thumbnails: [{ url: imageUrl }]
       },
+      style: 'QR_CODE_RENDERER_STYLE_ATA_SIDESHEET',
       trackingParams: null
     }
   };
 }
 
 function showPayModal(opts) {
-  const minutes = Math.max(1, Math.round((opts.expiresIn || 1800) / 60));
-  const lines = [
-    qrCodeListItem(buildQrImageUrl(opts.codeUrl)),
-    overlayMessageRenderer('¥' + opts.amountYuan + ' · 手机扫码支付'),
-    overlayMessageRenderer(minutes + ' 分钟内有效 · 返回键关闭'),
-    overlayMessageRenderer('授权成功后播放中将不再弹出')
-  ];
+  const amount = opts.amountYuan || '--';
 
   showModal(
     {
-      title: '设备授权',
-      subtitle: opts.description || '支付后自动激活本机'
+      title: '设备授权 · 授权后不再弹出',
+      subtitle: '¥' + amount + ' · 扫码支付 · 返回关闭'
     },
-    overlayPanelItemListRenderer(lines),
+    overlayPanelItemListRenderer([qrCodeListItem(buildQrImageUrl(opts.codeUrl))]),
     'tt-device-auth-modal'
   );
 }
